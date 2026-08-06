@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -160,6 +161,18 @@ func (_u *AuthCodeUpdate) AppendClaimsGroups(v []string) *AuthCodeUpdate {
 // ClearClaimsGroups clears the value of the "claims_groups" field.
 func (_u *AuthCodeUpdate) ClearClaimsGroups() *AuthCodeUpdate {
 	_u.mutation.ClearClaimsGroups()
+	return _u
+}
+
+// SetClaimsCustom sets the "claims_custom" field.
+func (_u *AuthCodeUpdate) SetClaimsCustom(v map[string]json.RawMessage) *AuthCodeUpdate {
+	_u.mutation.SetClaimsCustom(v)
+	return _u
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (_u *AuthCodeUpdate) ClearClaimsCustom() *AuthCodeUpdate {
+	_u.mutation.ClearClaimsCustom()
 	return _u
 }
 
@@ -372,6 +385,12 @@ func (_u *AuthCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.ClaimsGroupsCleared() {
 		_spec.ClearField(authcode.FieldClaimsGroups, field.TypeJSON)
 	}
+	if value, ok := _u.mutation.ClaimsCustom(); ok {
+		_spec.SetField(authcode.FieldClaimsCustom, field.TypeJSON, value)
+	}
+	if _u.mutation.ClaimsCustomCleared() {
+		_spec.ClearField(authcode.FieldClaimsCustom, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.ClaimsPreferredUsername(); ok {
 		_spec.SetField(authcode.FieldClaimsPreferredUsername, field.TypeString, value)
 	}
@@ -544,6 +563,18 @@ func (_u *AuthCodeUpdateOne) AppendClaimsGroups(v []string) *AuthCodeUpdateOne {
 // ClearClaimsGroups clears the value of the "claims_groups" field.
 func (_u *AuthCodeUpdateOne) ClearClaimsGroups() *AuthCodeUpdateOne {
 	_u.mutation.ClearClaimsGroups()
+	return _u
+}
+
+// SetClaimsCustom sets the "claims_custom" field.
+func (_u *AuthCodeUpdateOne) SetClaimsCustom(v map[string]json.RawMessage) *AuthCodeUpdateOne {
+	_u.mutation.SetClaimsCustom(v)
+	return _u
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (_u *AuthCodeUpdateOne) ClearClaimsCustom() *AuthCodeUpdateOne {
+	_u.mutation.ClearClaimsCustom()
 	return _u
 }
 
@@ -785,6 +816,12 @@ func (_u *AuthCodeUpdateOne) sqlSave(ctx context.Context) (_node *AuthCode, err 
 	}
 	if _u.mutation.ClaimsGroupsCleared() {
 		_spec.ClearField(authcode.FieldClaimsGroups, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ClaimsCustom(); ok {
+		_spec.SetField(authcode.FieldClaimsCustom, field.TypeJSON, value)
+	}
+	if _u.mutation.ClaimsCustomCleared() {
+		_spec.ClearField(authcode.FieldClaimsCustom, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ClaimsPreferredUsername(); ok {
 		_spec.SetField(authcode.FieldClaimsPreferredUsername, field.TypeString, value)

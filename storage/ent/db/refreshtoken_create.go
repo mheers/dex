@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -65,6 +66,12 @@ func (_c *RefreshTokenCreate) SetClaimsEmailVerified(v bool) *RefreshTokenCreate
 // SetClaimsGroups sets the "claims_groups" field.
 func (_c *RefreshTokenCreate) SetClaimsGroups(v []string) *RefreshTokenCreate {
 	_c.mutation.SetClaimsGroups(v)
+	return _c
+}
+
+// SetClaimsCustom sets the "claims_custom" field.
+func (_c *RefreshTokenCreate) SetClaimsCustom(v map[string]json.RawMessage) *RefreshTokenCreate {
+	_c.mutation.SetClaimsCustom(v)
 	return _c
 }
 
@@ -352,6 +359,10 @@ func (_c *RefreshTokenCreate) createSpec() (*RefreshToken, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.ClaimsGroups(); ok {
 		_spec.SetField(refreshtoken.FieldClaimsGroups, field.TypeJSON, value)
 		_node.ClaimsGroups = value
+	}
+	if value, ok := _c.mutation.ClaimsCustom(); ok {
+		_spec.SetField(refreshtoken.FieldClaimsCustom, field.TypeJSON, value)
+		_node.ClaimsCustom = value
 	}
 	if value, ok := _c.mutation.ClaimsPreferredUsername(); ok {
 		_spec.SetField(refreshtoken.FieldClaimsPreferredUsername, field.TypeString, value)

@@ -2,20 +2,37 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/pkg/claims"
 	"github.com/dexidp/dex/server/internal"
 	"github.com/dexidp/dex/storage"
 )
+
+type countingEnricher struct {
+	calls int
+}
+
+func (e *countingEnricher) Enrich(_ context.Context, _ string, identity connector.Identity) (connector.Identity, error) {
+	e.calls++
+	return identity, nil
+}
+
+func (*countingEnricher) ClaimsForScopes(_ string, _ claims.JSONClaims, _ []string) claims.JSONClaims {
+	return claims.New()
+}
 
 func mockRefreshTokenTestStorage(t *testing.T, s storage.Storage, useObsolete bool) {
 	ctx := t.Context()
@@ -77,6 +94,80 @@ func mockRefreshTokenTestStorage(t *testing.T, s storage.Storage, useObsolete bo
 
 	err = s.CreateOfflineSessions(ctx, offlineSessions)
 	require.NoError(t, err)
+}
+
+func TestRefreshReuseDoesNotReenrich(t *testing.T) {
+	httpServer, server := newTestServer(t, nil)
+	defer httpServer.Close()
+
+	mockRefreshTokenTestStorage(t, server.storage, false)
+	enricher := &countingEnricher{}
+	server.enricher = enricher
+	server.refreshTokenPolicy = &RefreshTokenPolicy{
+		rotateRefreshTokens: true,
+		now:                 time.Now,
+		logger:              server.logger,
+	}
+
+	ctx := t.Context()
+	firstContext, refreshErr := server.getRefreshTokenFromStorage(ctx, stringPtr("test"), &internal.RefreshToken{RefreshId: "test", Token: "bar"})
+	require.Nil(t, refreshErr)
+	firstContext.scopes = firstContext.storageToken.Scopes
+	_, _, refreshErr = server.updateRefreshToken(ctx, firstContext)
+	require.Nil(t, refreshErr)
+	require.Equal(t, 1, enricher.calls)
+	server.refreshTokenPolicy.reuseInterval = time.Minute
+
+	reuseContext, refreshErr := server.getRefreshTokenFromStorage(ctx, stringPtr("test"), &internal.RefreshToken{RefreshId: "test", Token: "bar"})
+	require.Nil(t, refreshErr)
+	reuseContext.scopes = reuseContext.storageToken.Scopes
+	_, _, refreshErr = server.updateRefreshToken(ctx, reuseContext)
+	require.Nil(t, refreshErr)
+	require.Equal(t, 1, enricher.calls)
+}
+
+func TestRefreshHTTPReuseDoesNotReenrich(t *testing.T) {
+	httpServer, server := newTestServer(t, nil)
+	defer httpServer.Close()
+
+	mockRefreshTokenTestStorage(t, server.storage, false)
+	enricher := &countingEnricher{}
+	server.enricher = enricher
+	fixedNow := time.Now().Add(2 * time.Minute)
+	server.now = func() time.Time { return fixedNow }
+	server.refreshTokenPolicy = &RefreshTokenPolicy{
+		rotateRefreshTokens: true,
+		reuseInterval:       time.Minute,
+		now:                 func() time.Time { return fixedNow },
+		logger:              server.logger,
+	}
+
+	refreshToken, err := internal.Marshal(&internal.RefreshToken{RefreshId: "test", Token: "bar"})
+	require.NoError(t, err)
+	request := func() *httptest.ResponseRecorder {
+		values := url.Values{
+			"grant_type":    {"refresh_token"},
+			"refresh_token": {refreshToken},
+		}
+		req := httptest.NewRequest(http.MethodPost, httpServer.URL+"/token", strings.NewReader(values.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.SetBasicAuth("test", "barfoo")
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, req)
+		return recorder
+	}
+
+	first := request()
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	require.Equal(t, 1, enricher.calls)
+
+	second := request()
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+	require.Equal(t, 1, enricher.calls)
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func TestRefreshTokenExpirationScenarios(t *testing.T) {

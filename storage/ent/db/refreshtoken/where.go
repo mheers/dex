@@ -484,6 +484,16 @@ func ClaimsGroupsNotNil() predicate.RefreshToken {
 	return predicate.RefreshToken(sql.FieldNotNull(FieldClaimsGroups))
 }
 
+// ClaimsCustomIsNil applies the IsNil predicate on the "claims_custom" field.
+func ClaimsCustomIsNil() predicate.RefreshToken {
+	return predicate.RefreshToken(sql.FieldIsNull(FieldClaimsCustom))
+}
+
+// ClaimsCustomNotNil applies the NotNil predicate on the "claims_custom" field.
+func ClaimsCustomNotNil() predicate.RefreshToken {
+	return predicate.RefreshToken(sql.FieldNotNull(FieldClaimsCustom))
+}
+
 // ClaimsPreferredUsernameEQ applies the EQ predicate on the "claims_preferred_username" field.
 func ClaimsPreferredUsernameEQ(v string) predicate.RefreshToken {
 	return predicate.RefreshToken(sql.FieldEQ(FieldClaimsPreferredUsername, v))

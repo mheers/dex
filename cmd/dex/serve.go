@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -33,10 +36,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
+	yamlv3 "gopkg.in/yaml.v3"
 
 	"github.com/dexidp/dex/api/v2"
 	"github.com/dexidp/dex/pkg/featureflags"
 	"github.com/dexidp/dex/server"
+	"github.com/dexidp/dex/server/enrichment"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
 )
@@ -97,6 +102,9 @@ func runServe(options serveOptions) error {
 	}
 
 	var c Config
+	if err := validateIdentityEnrichmentYAML(configData); err != nil {
+		return fmt.Errorf("error parse config file %s: %v", configFile, err)
+	}
 	if err := yaml.Unmarshal(configData, &c); err != nil {
 		return fmt.Errorf("error parse config file %s: %v", configFile, err)
 	}
@@ -123,6 +131,15 @@ func runServe(options serveOptions) error {
 	}
 	if err := c.Validate(); err != nil {
 		return err
+	}
+
+	var identityEnricher *enrichment.Registry
+	if c.Identity.Enrichment.Version != 0 || len(c.Identity.Enrichment.Connectors) > 0 || c.Identity.Enrichment.DefaultPolicy != "" {
+		identityEnricher, err = enrichment.NewRegistry(context.Background(), c.Identity.Enrichment)
+		if err != nil {
+			return fmt.Errorf("invalid identity enrichment config: %v", err)
+		}
+		logger.Info("identity enrichment configured", "version", c.Identity.Enrichment.Version, "connectors", len(c.Identity.Enrichment.Connectors))
 	}
 
 	logger.Info("config issuer", "issuer", c.Issuer)
@@ -369,6 +386,7 @@ func runServe(options serveOptions) error {
 		ContinueOnConnectorFailure: featureflags.ContinueOnConnectorFailure.Enabled(),
 		Signer:                     signerInstance,
 		IDTokensValidFor:           idTokensValidFor,
+		IdentityEnricher:           identityEnricher,
 	}
 
 	if c.Expiry.AuthRequests != "" {
@@ -582,6 +600,142 @@ func runServe(options serveOptions) error {
 			return fmt.Errorf("run groups: %w", err)
 		}
 		logger.Info("shutdown now", "err", err)
+	}
+	return nil
+}
+
+func validateIdentityEnrichmentYAML(data []byte) error {
+	decoder := yamlv3.NewDecoder(bytes.NewReader(data))
+	var document yamlv3.Node
+	if err := decoder.Decode(&document); err != nil {
+		return err
+	}
+	var extra yamlv3.Node
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("configuration contains multiple YAML documents")
+		}
+		return err
+	}
+	if len(document.Content) == 0 {
+		return nil
+	}
+	root := document.Content[0]
+	if root.Kind != yamlv3.MappingNode {
+		return nil
+	}
+
+	var identity *yamlv3.Node
+	identityCount := 0
+	for index := 0; index+1 < len(root.Content); index += 2 {
+		if root.Content[index].Value == "identity" {
+			identity = root.Content[index+1]
+			identityCount++
+		}
+	}
+	if identityCount > 1 {
+		return errors.New("duplicate YAML key \"identity\"")
+	}
+	if identity == nil {
+		return nil
+	}
+	if err := rejectDuplicateYAMLKeys(identity, "identity"); err != nil {
+		return err
+	}
+
+	return validateIdentityYAMLNode(identity)
+}
+
+func rejectDuplicateYAMLKeys(node *yamlv3.Node, path string) error {
+	switch node.Kind {
+	case yamlv3.MappingNode:
+		seen := make(map[string]struct{}, len(node.Content)/2)
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			key := node.Content[index].Value
+			if _, exists := seen[key]; exists {
+				return fmt.Errorf("duplicate YAML key %q at %s", key, path)
+			}
+			seen[key] = struct{}{}
+			if err := rejectDuplicateYAMLKeys(node.Content[index+1], path+"."+key); err != nil {
+				return err
+			}
+		}
+	case yamlv3.SequenceNode:
+		for index, child := range node.Content {
+			if err := rejectDuplicateYAMLKeys(child, fmt.Sprintf("%s[%d]", path, index)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateIdentityYAMLNode(node *yamlv3.Node) error {
+	if node.Kind != yamlv3.MappingNode {
+		return errors.New("identity must be a mapping")
+	}
+	for index := 0; index+1 < len(node.Content); index += 2 {
+		key := node.Content[index].Value
+		if key != "enrichment" {
+			return fmt.Errorf("unknown field %q at identity", key)
+		}
+		if err := validateYAMLNode(node.Content[index+1], reflect.TypeOf(enrichment.Config{}), "identity.enrichment"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateYAMLNode(node *yamlv3.Node, typ reflect.Type, path string) error {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	if node.Tag == "!!null" {
+		return nil
+	}
+	switch typ.Kind() {
+	case reflect.Struct:
+		if node.Kind != yamlv3.MappingNode {
+			return fmt.Errorf("%s must be a mapping", path)
+		}
+		fields := make(map[string]reflect.Type, typ.NumField())
+		for index := 0; index < typ.NumField(); index++ {
+			field := typ.Field(index)
+			tag := strings.Split(field.Tag.Get("yaml"), ",")[0]
+			if tag == "" || tag == "-" {
+				continue
+			}
+			fields[tag] = field.Type
+		}
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			key, value := node.Content[index].Value, node.Content[index+1]
+			fieldType, ok := fields[key]
+			if !ok {
+				return fmt.Errorf("unknown field %q at %s", key, path)
+			}
+			if err := validateYAMLNode(value, fieldType, path+"."+key); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		if node.Kind != yamlv3.MappingNode {
+			return fmt.Errorf("%s must be a mapping", path)
+		}
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			key := node.Content[index].Value
+			if err := validateYAMLNode(node.Content[index+1], typ.Elem(), path+"."+key); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		if node.Kind != yamlv3.SequenceNode {
+			return fmt.Errorf("%s must be a sequence", path)
+		}
+		for index, child := range node.Content {
+			if err := validateYAMLNode(child, typ.Elem(), fmt.Sprintf("%s[%d]", path, index)); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

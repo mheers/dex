@@ -44,6 +44,7 @@ import (
 	"github.com/dexidp/dex/connector/oidc"
 	"github.com/dexidp/dex/connector/openshift"
 	"github.com/dexidp/dex/connector/saml"
+	"github.com/dexidp/dex/server/enrichment"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/web"
@@ -125,6 +126,9 @@ type Config struct {
 	// If enabled, the server will continue starting even if some connectors fail to initialize.
 	// This allows the server to operate with a subset of connectors if some are misconfigured.
 	ContinueOnConnectorFailure bool
+
+	// IdentityEnricher is an immutable registry of trusted enrichment policies.
+	IdentityEnricher *enrichment.Registry
 }
 
 // WebConfig holds the server's frontend templates and asset configuration.
@@ -204,6 +208,11 @@ type Server struct {
 	logger *slog.Logger
 
 	signer signer.Signer
+
+	enricher identityEnricher
+
+	identityEnrichmentCounter  *prometheus.CounterVec
+	identityEnrichmentDuration *prometheus.HistogramVec
 }
 
 // NewServer constructs a server from the provided config.
@@ -311,6 +320,18 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		passwordConnector:      c.PasswordConnector,
 		logger:                 c.Logger,
 		signer:                 c.Signer,
+		enricher:               c.IdentityEnricher,
+	}
+	if c.PrometheusRegistry != nil && c.IdentityEnricher != nil {
+		s.identityEnrichmentCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "identity_enrichment_total",
+			Help: "Count of identity enrichment attempts.",
+		}, []string{"connector_id", "outcome"})
+		s.identityEnrichmentDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name: "identity_enrichment_duration_seconds",
+			Help: "Duration of identity enrichment attempts.",
+		}, []string{"connector_id"})
+		c.PrometheusRegistry.MustRegister(s.identityEnrichmentCounter, s.identityEnrichmentDuration)
 	}
 
 	// Retrieves connector objects in backend storage. This list includes the static connectors

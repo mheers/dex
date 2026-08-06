@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"encoding/json"
+
 	"entgo.io/ent"
 	"entgo.io/ent/schema/field"
 )
@@ -68,6 +70,8 @@ func (AuthRequest) Fields() []ent.Field {
 			SchemaType(textSchema),
 		field.Bool("claims_email_verified"),
 		field.JSON("claims_groups", []string{}).
+			Optional(),
+		field.JSON("claims_custom", map[string]json.RawMessage{}).
 			Optional(),
 		field.Text("claims_preferred_username").
 			SchemaType(textSchema).

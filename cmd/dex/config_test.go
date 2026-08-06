@@ -8,10 +8,12 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/kylelemons/godebug/pretty"
+	"github.com/stretchr/testify/require"
 
 	"github.com/dexidp/dex/connector/mock"
 	"github.com/dexidp/dex/connector/oidc"
 	"github.com/dexidp/dex/server"
+	"github.com/dexidp/dex/server/enrichment"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/sql"
@@ -256,6 +258,107 @@ additionalFeatures: [
 
 	if diff := pretty.Compare(c, want); diff != "" {
 		t.Errorf("got!=want: %s", diff)
+	}
+}
+
+func TestUnmarshalIdentityEnrichmentConfig(t *testing.T) {
+	rawConfig := []byte(`
+identity:
+  enrichment:
+    version: 1
+    defaultPolicy: unprivileged
+    connectors:
+      google-workspace:
+        provider: google
+        resolver:
+          type: file
+          path: /etc/dex/google-enrichment.json
+        emailFallback: false
+        serverClaims:
+          upstreamProvider: [profile]
+          enrichmentStatus: [profile]
+        claims:
+          employeeId:
+            source: resolver.claims.employeeId
+            type: string
+            emit: [profile]
+        groups:
+          source: resolver.roles
+          allowed: [reader]
+          emit: [groups]
+`)
+	var config Config
+	require.NoError(t, validateIdentityEnrichmentYAML(rawConfig))
+	require.NoError(t, yaml.Unmarshal(rawConfig, &config))
+	require.Equal(t, enrichment.Version, config.Identity.Enrichment.Version)
+	require.Equal(t, "unprivileged", config.Identity.Enrichment.DefaultPolicy)
+	connectorConfig := config.Identity.Enrichment.Connectors["google-workspace"]
+	require.Equal(t, "google", connectorConfig.Provider)
+	require.Equal(t, "/etc/dex/google-enrichment.json", connectorConfig.Resolver.Path)
+	require.Equal(t, []string{"profile"}, connectorConfig.ServerClaims["upstreamProvider"])
+	require.Equal(t, "resolver.claims.employeeId", connectorConfig.Claims["employeeId"].Source)
+}
+
+func TestValidateIdentityEnrichmentYAMLRejectsUnknownFields(t *testing.T) {
+	tests := map[string]string{
+		"identity": `identity:
+  unknown: true`,
+		"enrichment": `identity:
+  enrichment:
+    unknown: true`,
+		"connector": `identity:
+  enrichment:
+    connectors:
+      google:
+        unknown: true`,
+		"resolver": `identity:
+  enrichment:
+    connectors:
+      google:
+        resolver:
+          unknown: true`,
+		"claim": `identity:
+  enrichment:
+    connectors:
+      google:
+        claims:
+          employee:
+            unknown: true`,
+		"groups": `identity:
+  enrichment:
+    connectors:
+      google:
+        groups:
+          unknown: true`,
+	}
+	for name, config := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := validateIdentityEnrichmentYAML([]byte(config))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "field")
+		})
+	}
+}
+
+func TestValidateIdentityEnrichmentYAMLRejectsDuplicateFields(t *testing.T) {
+	for name, config := range map[string]string{
+		"enrichment": `identity:
+  enrichment:
+    version: 1
+    version: 1`,
+		"resolver": `identity:
+  enrichment:
+    connectors:
+      google:
+        resolver:
+          type: file
+          type: file`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := validateIdentityEnrichmentYAML([]byte(config))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "duplicate YAML key")
+		})
 	}
 }
 

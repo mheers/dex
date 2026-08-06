@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -223,6 +224,18 @@ func (_u *AuthRequestUpdate) ClearClaimsGroups() *AuthRequestUpdate {
 	return _u
 }
 
+// SetClaimsCustom sets the "claims_custom" field.
+func (_u *AuthRequestUpdate) SetClaimsCustom(v map[string]json.RawMessage) *AuthRequestUpdate {
+	_u.mutation.SetClaimsCustom(v)
+	return _u
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (_u *AuthRequestUpdate) ClearClaimsCustom() *AuthRequestUpdate {
+	_u.mutation.ClearClaimsCustom()
+	return _u
+}
+
 // SetClaimsPreferredUsername sets the "claims_preferred_username" field.
 func (_u *AuthRequestUpdate) SetClaimsPreferredUsername(v string) *AuthRequestUpdate {
 	_u.mutation.SetClaimsPreferredUsername(v)
@@ -414,6 +427,12 @@ func (_u *AuthRequestUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.ClaimsGroupsCleared() {
 		_spec.ClearField(authrequest.FieldClaimsGroups, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ClaimsCustom(); ok {
+		_spec.SetField(authrequest.FieldClaimsCustom, field.TypeJSON, value)
+	}
+	if _u.mutation.ClaimsCustomCleared() {
+		_spec.ClearField(authrequest.FieldClaimsCustom, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ClaimsPreferredUsername(); ok {
 		_spec.SetField(authrequest.FieldClaimsPreferredUsername, field.TypeString, value)
@@ -653,6 +672,18 @@ func (_u *AuthRequestUpdateOne) ClearClaimsGroups() *AuthRequestUpdateOne {
 	return _u
 }
 
+// SetClaimsCustom sets the "claims_custom" field.
+func (_u *AuthRequestUpdateOne) SetClaimsCustom(v map[string]json.RawMessage) *AuthRequestUpdateOne {
+	_u.mutation.SetClaimsCustom(v)
+	return _u
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (_u *AuthRequestUpdateOne) ClearClaimsCustom() *AuthRequestUpdateOne {
+	_u.mutation.ClearClaimsCustom()
+	return _u
+}
+
 // SetClaimsPreferredUsername sets the "claims_preferred_username" field.
 func (_u *AuthRequestUpdateOne) SetClaimsPreferredUsername(v string) *AuthRequestUpdateOne {
 	_u.mutation.SetClaimsPreferredUsername(v)
@@ -874,6 +905,12 @@ func (_u *AuthRequestUpdateOne) sqlSave(ctx context.Context) (_node *AuthRequest
 	}
 	if _u.mutation.ClaimsGroupsCleared() {
 		_spec.ClearField(authrequest.FieldClaimsGroups, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ClaimsCustom(); ok {
+		_spec.SetField(authrequest.FieldClaimsCustom, field.TypeJSON, value)
+	}
+	if _u.mutation.ClaimsCustomCleared() {
+		_spec.ClearField(authrequest.FieldClaimsCustom, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ClaimsPreferredUsername(); ok {
 		_spec.SetField(authrequest.FieldClaimsPreferredUsername, field.TypeString, value)

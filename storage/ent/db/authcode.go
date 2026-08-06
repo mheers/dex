@@ -36,6 +36,8 @@ type AuthCode struct {
 	ClaimsEmailVerified bool `json:"claims_email_verified,omitempty"`
 	// ClaimsGroups holds the value of the "claims_groups" field.
 	ClaimsGroups []string `json:"claims_groups,omitempty"`
+	// ClaimsCustom holds the value of the "claims_custom" field.
+	ClaimsCustom map[string]json.RawMessage `json:"claims_custom,omitempty"`
 	// ClaimsPreferredUsername holds the value of the "claims_preferred_username" field.
 	ClaimsPreferredUsername string `json:"claims_preferred_username,omitempty"`
 	// ConnectorID holds the value of the "connector_id" field.
@@ -56,7 +58,7 @@ func (*AuthCode) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case authcode.FieldScopes, authcode.FieldClaimsGroups, authcode.FieldConnectorData:
+		case authcode.FieldScopes, authcode.FieldClaimsGroups, authcode.FieldClaimsCustom, authcode.FieldConnectorData:
 			values[i] = new([]byte)
 		case authcode.FieldClaimsEmailVerified:
 			values[i] = new(sql.NullBool)
@@ -141,6 +143,14 @@ func (_m *AuthCode) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.ClaimsGroups); err != nil {
 					return fmt.Errorf("unmarshal field claims_groups: %w", err)
+				}
+			}
+		case authcode.FieldClaimsCustom:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field claims_custom", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ClaimsCustom); err != nil {
+					return fmt.Errorf("unmarshal field claims_custom: %w", err)
 				}
 			}
 		case authcode.FieldClaimsPreferredUsername:
@@ -241,6 +251,9 @@ func (_m *AuthCode) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("claims_groups=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ClaimsGroups))
+	builder.WriteString(", ")
+	builder.WriteString("claims_custom=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ClaimsCustom))
 	builder.WriteString(", ")
 	builder.WriteString("claims_preferred_username=")
 	builder.WriteString(_m.ClaimsPreferredUsername)

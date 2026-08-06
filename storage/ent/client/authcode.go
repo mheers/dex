@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/dexidp/dex/storage"
 )
@@ -20,6 +21,7 @@ func (d *Database) CreateAuthCode(ctx context.Context, code storage.AuthCode) er
 		SetClaimsUsername(code.Claims.Username).
 		SetClaimsPreferredUsername(code.Claims.PreferredUsername).
 		SetClaimsGroups(code.Claims.Groups).
+		SetClaimsCustom(map[string]json.RawMessage(code.Claims.CustomClaims.Clone())).
 		SetCodeChallenge(code.PKCE.CodeChallenge).
 		SetCodeChallengeMethod(code.PKCE.CodeChallengeMethod).
 		// Save utc time into database because ent doesn't support comparing dates with different timezones

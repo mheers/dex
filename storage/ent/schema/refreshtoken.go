@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"time"
 
 	"entgo.io/ent"
@@ -61,6 +62,8 @@ func (RefreshToken) Fields() []ent.Field {
 			NotEmpty(),
 		field.Bool("claims_email_verified"),
 		field.JSON("claims_groups", []string{}).
+			Optional(),
+		field.JSON("claims_custom", map[string]json.RawMessage{}).
 			Optional(),
 		field.Text("claims_preferred_username").
 			SchemaType(textSchema).

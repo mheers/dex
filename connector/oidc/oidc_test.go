@@ -678,26 +678,42 @@ func TestTokenIdentity(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		subjectType string
-		userInfo    bool
-		expectError bool
+		name           string
+		subjectType    string
+		userInfo       bool
+		expectError    bool
+		expectedScopes []string
+		scopeClaim     interface{}
 	}{
 		{
-			name:        "id_token",
-			subjectType: tokenTypeID,
+			name:           "id_token without scope claim",
+			subjectType:    tokenTypeID,
+			expectedScopes: []string{"openid", "groups"},
 		}, {
-			name:        "access_token",
+			name:        "access_token requires user info",
 			subjectType: tokenTypeAccess,
 			expectError: true,
 		}, {
-			name:        "id_token with user info",
-			subjectType: tokenTypeID,
-			userInfo:    true,
+			name:           "id_token with UserInfo without scope claim",
+			subjectType:    tokenTypeID,
+			userInfo:       true,
+			expectedScopes: []string{"openid", "groups"},
 		}, {
-			name:        "access_token with user info",
-			subjectType: tokenTypeAccess,
-			userInfo:    true,
+			name:           "access_token with UserInfo without scope claim",
+			subjectType:    tokenTypeAccess,
+			userInfo:       true,
+			expectedScopes: []string{"openid", "groups"},
+		}, {
+			name:           "id_token with string scope claim",
+			subjectType:    tokenTypeID,
+			expectedScopes: []string{"openid", "profile"},
+			scopeClaim:     "openid profile",
+		}, {
+			name:           "access_token with array scope claim",
+			subjectType:    tokenTypeAccess,
+			userInfo:       true,
+			expectedScopes: []string{"openid", "email"},
+			scopeClaim:     []string{"openid", "email"},
 		},
 	}
 	for _, tc := range tests {
@@ -706,17 +722,25 @@ func TestTokenIdentity(t *testing.T) {
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			testServer, err := setupServer(map[string]any{
-				"sub":  "subvalue",
-				"name": "namevalue",
-			}, true)
+			tok := map[string]any{
+				"sub":        "subvalue",
+				"name":       "namevalue",
+				"department": "engineering",
+				"unselected": "secret",
+			}
+			if tc.scopeClaim != nil {
+				tok["scope"] = tc.scopeClaim
+			}
+			testServer, err := setupServer(tok, true)
 			if err != nil {
 				t.Fatal("failed to setup test server", err)
 			}
+			defer testServer.Close()
 			conn, err := newConnector(Config{
-				Issuer:      testServer.URL,
-				Scopes:      []string{"openid", "groups"},
-				GetUserInfo: tc.userInfo,
+				Issuer:       testServer.URL,
+				Scopes:       []string{"openid", "groups"},
+				GetUserInfo:  tc.userInfo,
+				SourceClaims: []string{"department"},
 			})
 			if err != nil {
 				t.Fatal("failed to create new connector", err)
@@ -745,6 +769,9 @@ func TestTokenIdentity(t *testing.T) {
 			// assert identity
 			expectEquals(t, identity.UserID, "subvalue")
 			expectEquals(t, identity.Username, "namevalue")
+			require.Equal(t, tc.expectedScopes, identity.AuthorizedScopes)
+			require.Equal(t, json.RawMessage(`"engineering"`), identity.SourceClaims["department"])
+			require.NotContains(t, identity.SourceClaims, "unselected")
 		})
 	}
 }
@@ -832,6 +859,38 @@ func TestProviderOverride(t *testing.T) {
 			t.Fatalf("unexpected token URL: %s, expected: %s\n", conn.provider.Endpoint().TokenURL, expToken)
 		}
 	})
+}
+
+func TestParseAuthorizedScopes(t *testing.T) {
+	tests := []struct {
+		name  string
+		value interface{}
+		want  []string
+	}{
+		{name: "missing", want: nil},
+		{name: "string", value: "openid profile", want: []string{"openid", "profile"}},
+		{name: "json array", value: []interface{}{"openid", "groups"}, want: []string{"openid", "groups"}},
+		{name: "string array", value: []string{"openid", "groups"}, want: []string{"openid", "groups"}},
+		{name: "empty string", value: "", want: []string{}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			values := map[string]interface{}{}
+			if test.value != nil {
+				values["scope"] = test.value
+			}
+			require.Equal(t, test.want, parseAuthorizedScopes(values))
+		})
+	}
+}
+
+func TestIdentityClonePreservesExplicitEmptyAuthorizedScopes(t *testing.T) {
+	identity := connector.Identity{AuthorizedScopes: []string{}}
+
+	clone := identity.Clone()
+
+	require.NotNil(t, clone.AuthorizedScopes)
+	require.Empty(t, clone.AuthorizedScopes)
 }
 
 func setupServer(tok map[string]interface{}, idTokenDesired bool) (*httptest.Server, error) {

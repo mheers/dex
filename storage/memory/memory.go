@@ -113,6 +113,7 @@ func (s *memStorage) CreateClient(ctx context.Context, c storage.Client) (err er
 }
 
 func (s *memStorage) CreateAuthCode(ctx context.Context, c storage.AuthCode) (err error) {
+	c.Claims = c.Claims.Clone()
 	s.tx(func() {
 		if _, ok := s.authCodes[c.ID]; ok {
 			err = storage.ErrAlreadyExists
@@ -124,6 +125,7 @@ func (s *memStorage) CreateAuthCode(ctx context.Context, c storage.AuthCode) (er
 }
 
 func (s *memStorage) CreateRefresh(ctx context.Context, r storage.RefreshToken) (err error) {
+	r.Claims = r.Claims.Clone()
 	s.tx(func() {
 		if _, ok := s.refreshTokens[r.ID]; ok {
 			err = storage.ErrAlreadyExists
@@ -135,6 +137,7 @@ func (s *memStorage) CreateRefresh(ctx context.Context, r storage.RefreshToken) 
 }
 
 func (s *memStorage) CreateAuthRequest(ctx context.Context, a storage.AuthRequest) (err error) {
+	a.Claims = a.Claims.Clone()
 	s.tx(func() {
 		if _, ok := s.authReqs[a.ID]; ok {
 			err = storage.ErrAlreadyExists
@@ -190,6 +193,7 @@ func (s *memStorage) GetAuthCode(ctx context.Context, id string) (c storage.Auth
 			err = storage.ErrNotFound
 			return
 		}
+		c.Claims = c.Claims.Clone()
 	})
 	return
 }
@@ -227,6 +231,7 @@ func (s *memStorage) GetRefresh(ctx context.Context, id string) (tok storage.Ref
 			err = storage.ErrNotFound
 			return
 		}
+		tok.Claims = tok.Claims.Clone()
 	})
 	return
 }
@@ -238,6 +243,7 @@ func (s *memStorage) GetAuthRequest(ctx context.Context, id string) (req storage
 			err = storage.ErrNotFound
 			return
 		}
+		req.Claims = req.Claims.Clone()
 	})
 	return
 }
@@ -417,6 +423,7 @@ func (s *memStorage) UpdateAuthRequest(ctx context.Context, id string, updater f
 			return
 		}
 		if req, err = updater(req); err == nil {
+			req.Claims = req.Claims.Clone()
 			s.authReqs[id] = req
 		}
 	})
@@ -446,6 +453,7 @@ func (s *memStorage) UpdateRefreshToken(ctx context.Context, id string, updater 
 			return
 		}
 		if r, err = updater(r); err == nil {
+			r.Claims = r.Claims.Clone()
 			s.refreshTokens[id] = r
 		}
 	})

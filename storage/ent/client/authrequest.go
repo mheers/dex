@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/dexidp/dex/storage"
@@ -25,6 +26,7 @@ func (d *Database) CreateAuthRequest(ctx context.Context, authRequest storage.Au
 		SetClaimsUsername(authRequest.Claims.Username).
 		SetClaimsPreferredUsername(authRequest.Claims.PreferredUsername).
 		SetClaimsGroups(authRequest.Claims.Groups).
+		SetClaimsCustom(map[string]json.RawMessage(authRequest.Claims.CustomClaims.Clone())).
 		SetCodeChallenge(authRequest.PKCE.CodeChallenge).
 		SetCodeChallengeMethod(authRequest.PKCE.CodeChallengeMethod).
 		// Save utc time into database because ent doesn't support comparing dates with different timezones
@@ -89,6 +91,7 @@ func (d *Database) UpdateAuthRequest(ctx context.Context, id string, updater fun
 		SetClaimsUsername(newAuthRequest.Claims.Username).
 		SetClaimsPreferredUsername(newAuthRequest.Claims.PreferredUsername).
 		SetClaimsGroups(newAuthRequest.Claims.Groups).
+		SetClaimsCustom(map[string]json.RawMessage(newAuthRequest.Claims.CustomClaims.Clone())).
 		SetCodeChallenge(newAuthRequest.PKCE.CodeChallenge).
 		SetCodeChallengeMethod(newAuthRequest.PKCE.CodeChallengeMethod).
 		// Save utc time into database because ent doesn't support comparing dates with different timezones

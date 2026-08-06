@@ -394,9 +394,24 @@ func (s *Server) newIDToken(ctx context.Context, clientID string, claims storage
 		tok.AuthorizingParty = clientID
 	}
 
-	payload, err := json.Marshal(tok)
+	customClaims := s.claimsForScopes(connID, claims.CustomClaims, scopes)
+	standardPayload, err := json.Marshal(tok)
 	if err != nil {
 		return "", expiry, fmt.Errorf("could not serialize claims: %v", err)
+	}
+	var tokenClaims map[string]json.RawMessage
+	if err := json.Unmarshal(standardPayload, &tokenClaims); err != nil {
+		return "", expiry, fmt.Errorf("could not decode claims: %v", err)
+	}
+	for name, value := range customClaims {
+		if _, exists := tokenClaims[name]; exists {
+			return "", expiry, fmt.Errorf("custom claim %q conflicts with a standard token claim", name)
+		}
+		tokenClaims[name] = append(json.RawMessage(nil), value...)
+	}
+	payload, err := json.Marshal(tokenClaims)
+	if err != nil {
+		return "", expiry, fmt.Errorf("could not merge custom claims: %v", err)
 	}
 
 	if idToken, err = s.signer.Sign(ctx, payload); err != nil {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/dexidp/dex/pkg/featureflags"
 	"github.com/dexidp/dex/server"
+	"github.com/dexidp/dex/server/enrichment"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/ent"
@@ -33,6 +34,7 @@ type Config struct {
 	GRPC      GRPC      `json:"grpc"`
 	Expiry    Expiry    `json:"expiry"`
 	Logger    Logger    `json:"logger"`
+	Identity  Identity  `json:"identity"`
 
 	Frontend server.WebConfig `json:"frontend"`
 
@@ -55,6 +57,11 @@ type Config struct {
 	// querying the storage. Cannot be specified without enabling a passwords
 	// database.
 	StaticPasswords []password `json:"staticPasswords"`
+}
+
+// Identity contains trusted identity processing configuration.
+type Identity struct {
+	Enrichment enrichment.Config `json:"enrichment"`
 }
 
 // Validate the configuration

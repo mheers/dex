@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -64,6 +65,7 @@ type AuthCodeMutation struct {
 	claims_email_verified     *bool
 	claims_groups             *[]string
 	appendclaims_groups       []string
+	claims_custom             *map[string]json.RawMessage
 	claims_preferred_username *string
 	connector_id              *string
 	connector_data            *[]byte
@@ -562,6 +564,55 @@ func (m *AuthCodeMutation) ResetClaimsGroups() {
 	delete(m.clearedFields, authcode.FieldClaimsGroups)
 }
 
+// SetClaimsCustom sets the "claims_custom" field.
+func (m *AuthCodeMutation) SetClaimsCustom(mm map[string]json.RawMessage) {
+	m.claims_custom = &mm
+}
+
+// ClaimsCustom returns the value of the "claims_custom" field in the mutation.
+func (m *AuthCodeMutation) ClaimsCustom() (r map[string]json.RawMessage, exists bool) {
+	v := m.claims_custom
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimsCustom returns the old "claims_custom" field's value of the AuthCode entity.
+// If the AuthCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuthCodeMutation) OldClaimsCustom(ctx context.Context) (v map[string]json.RawMessage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimsCustom is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimsCustom requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimsCustom: %w", err)
+	}
+	return oldValue.ClaimsCustom, nil
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (m *AuthCodeMutation) ClearClaimsCustom() {
+	m.claims_custom = nil
+	m.clearedFields[authcode.FieldClaimsCustom] = struct{}{}
+}
+
+// ClaimsCustomCleared returns if the "claims_custom" field was cleared in this mutation.
+func (m *AuthCodeMutation) ClaimsCustomCleared() bool {
+	_, ok := m.clearedFields[authcode.FieldClaimsCustom]
+	return ok
+}
+
+// ResetClaimsCustom resets all changes to the "claims_custom" field.
+func (m *AuthCodeMutation) ResetClaimsCustom() {
+	m.claims_custom = nil
+	delete(m.clearedFields, authcode.FieldClaimsCustom)
+}
+
 // SetClaimsPreferredUsername sets the "claims_preferred_username" field.
 func (m *AuthCodeMutation) SetClaimsPreferredUsername(s string) {
 	m.claims_preferred_username = &s
@@ -825,7 +876,7 @@ func (m *AuthCodeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AuthCodeMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.client_id != nil {
 		fields = append(fields, authcode.FieldClientID)
 	}
@@ -852,6 +903,9 @@ func (m *AuthCodeMutation) Fields() []string {
 	}
 	if m.claims_groups != nil {
 		fields = append(fields, authcode.FieldClaimsGroups)
+	}
+	if m.claims_custom != nil {
+		fields = append(fields, authcode.FieldClaimsCustom)
 	}
 	if m.claims_preferred_username != nil {
 		fields = append(fields, authcode.FieldClaimsPreferredUsername)
@@ -897,6 +951,8 @@ func (m *AuthCodeMutation) Field(name string) (ent.Value, bool) {
 		return m.ClaimsEmailVerified()
 	case authcode.FieldClaimsGroups:
 		return m.ClaimsGroups()
+	case authcode.FieldClaimsCustom:
+		return m.ClaimsCustom()
 	case authcode.FieldClaimsPreferredUsername:
 		return m.ClaimsPreferredUsername()
 	case authcode.FieldConnectorID:
@@ -936,6 +992,8 @@ func (m *AuthCodeMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldClaimsEmailVerified(ctx)
 	case authcode.FieldClaimsGroups:
 		return m.OldClaimsGroups(ctx)
+	case authcode.FieldClaimsCustom:
+		return m.OldClaimsCustom(ctx)
 	case authcode.FieldClaimsPreferredUsername:
 		return m.OldClaimsPreferredUsername(ctx)
 	case authcode.FieldConnectorID:
@@ -1020,6 +1078,13 @@ func (m *AuthCodeMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetClaimsGroups(v)
 		return nil
+	case authcode.FieldClaimsCustom:
+		v, ok := value.(map[string]json.RawMessage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimsCustom(v)
+		return nil
 	case authcode.FieldClaimsPreferredUsername:
 		v, ok := value.(string)
 		if !ok {
@@ -1098,6 +1163,9 @@ func (m *AuthCodeMutation) ClearedFields() []string {
 	if m.FieldCleared(authcode.FieldClaimsGroups) {
 		fields = append(fields, authcode.FieldClaimsGroups)
 	}
+	if m.FieldCleared(authcode.FieldClaimsCustom) {
+		fields = append(fields, authcode.FieldClaimsCustom)
+	}
 	if m.FieldCleared(authcode.FieldConnectorData) {
 		fields = append(fields, authcode.FieldConnectorData)
 	}
@@ -1120,6 +1188,9 @@ func (m *AuthCodeMutation) ClearField(name string) error {
 		return nil
 	case authcode.FieldClaimsGroups:
 		m.ClearClaimsGroups()
+		return nil
+	case authcode.FieldClaimsCustom:
+		m.ClearClaimsCustom()
 		return nil
 	case authcode.FieldConnectorData:
 		m.ClearConnectorData()
@@ -1158,6 +1229,9 @@ func (m *AuthCodeMutation) ResetField(name string) error {
 		return nil
 	case authcode.FieldClaimsGroups:
 		m.ResetClaimsGroups()
+		return nil
+	case authcode.FieldClaimsCustom:
+		m.ResetClaimsCustom()
 		return nil
 	case authcode.FieldClaimsPreferredUsername:
 		m.ResetClaimsPreferredUsername()
@@ -1251,6 +1325,7 @@ type AuthRequestMutation struct {
 	claims_email_verified     *bool
 	claims_groups             *[]string
 	appendclaims_groups       []string
+	claims_custom             *map[string]json.RawMessage
 	claims_preferred_username *string
 	connector_id              *string
 	connector_data            *[]byte
@@ -1923,6 +1998,55 @@ func (m *AuthRequestMutation) ResetClaimsGroups() {
 	delete(m.clearedFields, authrequest.FieldClaimsGroups)
 }
 
+// SetClaimsCustom sets the "claims_custom" field.
+func (m *AuthRequestMutation) SetClaimsCustom(mm map[string]json.RawMessage) {
+	m.claims_custom = &mm
+}
+
+// ClaimsCustom returns the value of the "claims_custom" field in the mutation.
+func (m *AuthRequestMutation) ClaimsCustom() (r map[string]json.RawMessage, exists bool) {
+	v := m.claims_custom
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimsCustom returns the old "claims_custom" field's value of the AuthRequest entity.
+// If the AuthRequest object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuthRequestMutation) OldClaimsCustom(ctx context.Context) (v map[string]json.RawMessage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimsCustom is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimsCustom requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimsCustom: %w", err)
+	}
+	return oldValue.ClaimsCustom, nil
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (m *AuthRequestMutation) ClearClaimsCustom() {
+	m.claims_custom = nil
+	m.clearedFields[authrequest.FieldClaimsCustom] = struct{}{}
+}
+
+// ClaimsCustomCleared returns if the "claims_custom" field was cleared in this mutation.
+func (m *AuthRequestMutation) ClaimsCustomCleared() bool {
+	_, ok := m.clearedFields[authrequest.FieldClaimsCustom]
+	return ok
+}
+
+// ResetClaimsCustom resets all changes to the "claims_custom" field.
+func (m *AuthRequestMutation) ResetClaimsCustom() {
+	m.claims_custom = nil
+	delete(m.clearedFields, authrequest.FieldClaimsCustom)
+}
+
 // SetClaimsPreferredUsername sets the "claims_preferred_username" field.
 func (m *AuthRequestMutation) SetClaimsPreferredUsername(s string) {
 	m.claims_preferred_username = &s
@@ -2222,7 +2346,7 @@ func (m *AuthRequestMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AuthRequestMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.client_id != nil {
 		fields = append(fields, authrequest.FieldClientID)
 	}
@@ -2261,6 +2385,9 @@ func (m *AuthRequestMutation) Fields() []string {
 	}
 	if m.claims_groups != nil {
 		fields = append(fields, authrequest.FieldClaimsGroups)
+	}
+	if m.claims_custom != nil {
+		fields = append(fields, authrequest.FieldClaimsCustom)
 	}
 	if m.claims_preferred_username != nil {
 		fields = append(fields, authrequest.FieldClaimsPreferredUsername)
@@ -2317,6 +2444,8 @@ func (m *AuthRequestMutation) Field(name string) (ent.Value, bool) {
 		return m.ClaimsEmailVerified()
 	case authrequest.FieldClaimsGroups:
 		return m.ClaimsGroups()
+	case authrequest.FieldClaimsCustom:
+		return m.ClaimsCustom()
 	case authrequest.FieldClaimsPreferredUsername:
 		return m.ClaimsPreferredUsername()
 	case authrequest.FieldConnectorID:
@@ -2366,6 +2495,8 @@ func (m *AuthRequestMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldClaimsEmailVerified(ctx)
 	case authrequest.FieldClaimsGroups:
 		return m.OldClaimsGroups(ctx)
+	case authrequest.FieldClaimsCustom:
+		return m.OldClaimsCustom(ctx)
 	case authrequest.FieldClaimsPreferredUsername:
 		return m.OldClaimsPreferredUsername(ctx)
 	case authrequest.FieldConnectorID:
@@ -2480,6 +2611,13 @@ func (m *AuthRequestMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetClaimsGroups(v)
 		return nil
+	case authrequest.FieldClaimsCustom:
+		v, ok := value.(map[string]json.RawMessage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimsCustom(v)
+		return nil
 	case authrequest.FieldClaimsPreferredUsername:
 		v, ok := value.(string)
 		if !ok {
@@ -2568,6 +2706,9 @@ func (m *AuthRequestMutation) ClearedFields() []string {
 	if m.FieldCleared(authrequest.FieldClaimsGroups) {
 		fields = append(fields, authrequest.FieldClaimsGroups)
 	}
+	if m.FieldCleared(authrequest.FieldClaimsCustom) {
+		fields = append(fields, authrequest.FieldClaimsCustom)
+	}
 	if m.FieldCleared(authrequest.FieldConnectorData) {
 		fields = append(fields, authrequest.FieldConnectorData)
 	}
@@ -2593,6 +2734,9 @@ func (m *AuthRequestMutation) ClearField(name string) error {
 		return nil
 	case authrequest.FieldClaimsGroups:
 		m.ClearClaimsGroups()
+		return nil
+	case authrequest.FieldClaimsCustom:
+		m.ClearClaimsCustom()
 		return nil
 	case authrequest.FieldConnectorData:
 		m.ClearConnectorData()
@@ -2643,6 +2787,9 @@ func (m *AuthRequestMutation) ResetField(name string) error {
 		return nil
 	case authrequest.FieldClaimsGroups:
 		m.ResetClaimsGroups()
+		return nil
+	case authrequest.FieldClaimsCustom:
+		m.ResetClaimsCustom()
 		return nil
 	case authrequest.FieldClaimsPreferredUsername:
 		m.ResetClaimsPreferredUsername()
@@ -7089,6 +7236,7 @@ type RefreshTokenMutation struct {
 	claims_email_verified     *bool
 	claims_groups             *[]string
 	appendclaims_groups       []string
+	claims_custom             *map[string]json.RawMessage
 	claims_preferred_username *string
 	connector_id              *string
 	connector_data            *[]byte
@@ -7552,6 +7700,55 @@ func (m *RefreshTokenMutation) ResetClaimsGroups() {
 	delete(m.clearedFields, refreshtoken.FieldClaimsGroups)
 }
 
+// SetClaimsCustom sets the "claims_custom" field.
+func (m *RefreshTokenMutation) SetClaimsCustom(mm map[string]json.RawMessage) {
+	m.claims_custom = &mm
+}
+
+// ClaimsCustom returns the value of the "claims_custom" field in the mutation.
+func (m *RefreshTokenMutation) ClaimsCustom() (r map[string]json.RawMessage, exists bool) {
+	v := m.claims_custom
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimsCustom returns the old "claims_custom" field's value of the RefreshToken entity.
+// If the RefreshToken object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RefreshTokenMutation) OldClaimsCustom(ctx context.Context) (v map[string]json.RawMessage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimsCustom is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimsCustom requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimsCustom: %w", err)
+	}
+	return oldValue.ClaimsCustom, nil
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (m *RefreshTokenMutation) ClearClaimsCustom() {
+	m.claims_custom = nil
+	m.clearedFields[refreshtoken.FieldClaimsCustom] = struct{}{}
+}
+
+// ClaimsCustomCleared returns if the "claims_custom" field was cleared in this mutation.
+func (m *RefreshTokenMutation) ClaimsCustomCleared() bool {
+	_, ok := m.clearedFields[refreshtoken.FieldClaimsCustom]
+	return ok
+}
+
+// ResetClaimsCustom resets all changes to the "claims_custom" field.
+func (m *RefreshTokenMutation) ResetClaimsCustom() {
+	m.claims_custom = nil
+	delete(m.clearedFields, refreshtoken.FieldClaimsCustom)
+}
+
 // SetClaimsPreferredUsername sets the "claims_preferred_username" field.
 func (m *RefreshTokenMutation) SetClaimsPreferredUsername(s string) {
 	m.claims_preferred_username = &s
@@ -7851,7 +8048,7 @@ func (m *RefreshTokenMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RefreshTokenMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.client_id != nil {
 		fields = append(fields, refreshtoken.FieldClientID)
 	}
@@ -7875,6 +8072,9 @@ func (m *RefreshTokenMutation) Fields() []string {
 	}
 	if m.claims_groups != nil {
 		fields = append(fields, refreshtoken.FieldClaimsGroups)
+	}
+	if m.claims_custom != nil {
+		fields = append(fields, refreshtoken.FieldClaimsCustom)
 	}
 	if m.claims_preferred_username != nil {
 		fields = append(fields, refreshtoken.FieldClaimsPreferredUsername)
@@ -7921,6 +8121,8 @@ func (m *RefreshTokenMutation) Field(name string) (ent.Value, bool) {
 		return m.ClaimsEmailVerified()
 	case refreshtoken.FieldClaimsGroups:
 		return m.ClaimsGroups()
+	case refreshtoken.FieldClaimsCustom:
+		return m.ClaimsCustom()
 	case refreshtoken.FieldClaimsPreferredUsername:
 		return m.ClaimsPreferredUsername()
 	case refreshtoken.FieldConnectorID:
@@ -7960,6 +8162,8 @@ func (m *RefreshTokenMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldClaimsEmailVerified(ctx)
 	case refreshtoken.FieldClaimsGroups:
 		return m.OldClaimsGroups(ctx)
+	case refreshtoken.FieldClaimsCustom:
+		return m.OldClaimsCustom(ctx)
 	case refreshtoken.FieldClaimsPreferredUsername:
 		return m.OldClaimsPreferredUsername(ctx)
 	case refreshtoken.FieldConnectorID:
@@ -8038,6 +8242,13 @@ func (m *RefreshTokenMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetClaimsGroups(v)
+		return nil
+	case refreshtoken.FieldClaimsCustom:
+		v, ok := value.(map[string]json.RawMessage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimsCustom(v)
 		return nil
 	case refreshtoken.FieldClaimsPreferredUsername:
 		v, ok := value.(string)
@@ -8124,6 +8335,9 @@ func (m *RefreshTokenMutation) ClearedFields() []string {
 	if m.FieldCleared(refreshtoken.FieldClaimsGroups) {
 		fields = append(fields, refreshtoken.FieldClaimsGroups)
 	}
+	if m.FieldCleared(refreshtoken.FieldClaimsCustom) {
+		fields = append(fields, refreshtoken.FieldClaimsCustom)
+	}
 	if m.FieldCleared(refreshtoken.FieldConnectorData) {
 		fields = append(fields, refreshtoken.FieldConnectorData)
 	}
@@ -8146,6 +8360,9 @@ func (m *RefreshTokenMutation) ClearField(name string) error {
 		return nil
 	case refreshtoken.FieldClaimsGroups:
 		m.ClearClaimsGroups()
+		return nil
+	case refreshtoken.FieldClaimsCustom:
+		m.ClearClaimsCustom()
 		return nil
 	case refreshtoken.FieldConnectorData:
 		m.ClearConnectorData()
@@ -8181,6 +8398,9 @@ func (m *RefreshTokenMutation) ResetField(name string) error {
 		return nil
 	case refreshtoken.FieldClaimsGroups:
 		m.ResetClaimsGroups()
+		return nil
+	case refreshtoken.FieldClaimsCustom:
+		m.ResetClaimsCustom()
 		return nil
 	case refreshtoken.FieldClaimsPreferredUsername:
 		m.ResetClaimsPreferredUsername()

@@ -3,6 +3,7 @@ package conformance
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"sort"
 	"testing"
@@ -41,6 +42,7 @@ func RunTests(t *testing.T, newStorage func(t *testing.T) storage.Storage) {
 	runTests(t, newStorage, []subTest{
 		{"AuthCodeCRUD", testAuthCodeCRUD},
 		{"AuthRequestCRUD", testAuthRequestCRUD},
+		{"CustomClaimsCRUD", testCustomClaimsCRUD},
 		{"ClientCRUD", testClientCRUD},
 		{"RefreshTokenCRUD", testRefreshTokenCRUD},
 		{"PasswordCRUD", testPasswordCRUD},
@@ -52,6 +54,176 @@ func RunTests(t *testing.T, newStorage func(t *testing.T) storage.Storage) {
 		{"DeviceRequestCRUD", testDeviceRequestCRUD},
 		{"DeviceTokenCRUD", testDeviceTokenCRUD},
 	})
+}
+
+func testCustomClaimsCRUD(t *testing.T, s storage.Storage) {
+	ctx := t.Context()
+	want := storage.JSONClaims{
+		"employeeId": json.RawMessage(`"employee-1"`),
+		"regions":    json.RawMessage(`["EMEA","NA"]`),
+	}
+
+	authRequest := storage.AuthRequest{
+		ID:      storage.NewID(),
+		Expiry:  neverExpire,
+		HMACKey: []byte("hmac-key"),
+		Claims: storage.Claims{
+			UserID:       "user1",
+			Username:     "user",
+			Email:        "user@example.com",
+			CustomClaims: want.Clone(),
+		},
+	}
+	if err := s.CreateAuthRequest(ctx, authRequest); err != nil {
+		t.Fatalf("create auth request: %v", err)
+	}
+	authRequest.Claims.CustomClaims["employeeId"] = json.RawMessage(`"mutated"`)
+	gotAuthRequest, err := s.GetAuthRequest(ctx, authRequest.ID)
+	if err != nil {
+		t.Fatalf("get auth request: %v", err)
+	}
+	if diff := pretty.Compare(want, gotAuthRequest.Claims.CustomClaims); diff != "" {
+		t.Fatalf("auth request custom claims changed through input alias: %s", diff)
+	}
+	gotAuthRequest.Claims.CustomClaims["employeeId"] = json.RawMessage(`"returned-mutated"`)
+	gotAuthRequestAgain, err := s.GetAuthRequest(ctx, authRequest.ID)
+	if err != nil {
+		t.Fatalf("get auth request after returned mutation: %v", err)
+	}
+	if diff := pretty.Compare(want, gotAuthRequestAgain.Claims.CustomClaims); diff != "" {
+		t.Fatalf("auth request custom claims changed through returned alias: %s", diff)
+	}
+	updatedClaims := storage.JSONClaims{
+		"employeeId": json.RawMessage(`"employee-2"`),
+		"regions":    json.RawMessage(`["APAC"]`),
+	}
+	if err := s.UpdateAuthRequest(ctx, authRequest.ID, func(old storage.AuthRequest) (storage.AuthRequest, error) {
+		old.Claims.CustomClaims = updatedClaims.Clone()
+		return old, nil
+	}); err != nil {
+		t.Fatalf("update auth request custom claims: %v", err)
+	}
+	gotAuthRequest, err = s.GetAuthRequest(ctx, authRequest.ID)
+	if err != nil {
+		t.Fatalf("get updated auth request: %v", err)
+	}
+	if diff := pretty.Compare(updatedClaims, gotAuthRequest.Claims.CustomClaims); diff != "" {
+		t.Fatalf("updated auth request custom claims did not round trip: %s", diff)
+	}
+
+	authCode := storage.AuthCode{
+		ID:          storage.NewID(),
+		ClientID:    "client1",
+		Nonce:       "nonce",
+		RedirectURI: "https://example.com/callback",
+		Scopes:      []string{"openid"},
+		ConnectorID: "connector",
+		Expiry:      neverExpire,
+		Claims: storage.Claims{
+			UserID:       "user1",
+			Username:     "user",
+			Email:        "user@example.com",
+			CustomClaims: want.Clone(),
+		},
+	}
+	if err := s.CreateAuthCode(ctx, authCode); err != nil {
+		t.Fatalf("create auth code: %v", err)
+	}
+	authCode.Claims.CustomClaims["employeeId"] = json.RawMessage(`"mutated"`)
+	gotAuthCode, err := s.GetAuthCode(ctx, authCode.ID)
+	if err != nil {
+		t.Fatalf("get auth code: %v", err)
+	}
+	if diff := pretty.Compare(want, gotAuthCode.Claims.CustomClaims); diff != "" {
+		t.Fatalf("auth code custom claims changed through input alias: %s", diff)
+	}
+	gotAuthCode.Claims.CustomClaims["employeeId"] = json.RawMessage(`"returned-mutated"`)
+	gotAuthCodeAgain, err := s.GetAuthCode(ctx, authCode.ID)
+	if err != nil {
+		t.Fatalf("get auth code after returned mutation: %v", err)
+	}
+	if diff := pretty.Compare(want, gotAuthCodeAgain.Claims.CustomClaims); diff != "" {
+		t.Fatalf("auth code custom claims changed through returned alias: %s", diff)
+	}
+
+	refresh := storage.RefreshToken{
+		ID:          storage.NewID(),
+		ClientID:    "client1",
+		ConnectorID: "connector",
+		Nonce:       "refresh-nonce",
+		Token:       "refresh-token",
+		Scopes:      []string{"openid"},
+		Claims: storage.Claims{
+			UserID:       "user1",
+			Username:     "user",
+			Email:        "user@example.com",
+			CustomClaims: want.Clone(),
+		},
+	}
+	if err := s.CreateRefresh(ctx, refresh); err != nil {
+		t.Fatalf("create refresh token: %v", err)
+	}
+	refresh.Claims.CustomClaims["employeeId"] = json.RawMessage(`"mutated"`)
+	gotRefresh, err := s.GetRefresh(ctx, refresh.ID)
+	if err != nil {
+		t.Fatalf("get refresh token: %v", err)
+	}
+	if diff := pretty.Compare(want, gotRefresh.Claims.CustomClaims); diff != "" {
+		t.Fatalf("refresh custom claims changed through input alias: %s", diff)
+	}
+	gotRefresh.Claims.CustomClaims["employeeId"] = json.RawMessage(`"returned-mutated"`)
+	gotRefreshAgain, err := s.GetRefresh(ctx, refresh.ID)
+	if err != nil {
+		t.Fatalf("get refresh token after returned mutation: %v", err)
+	}
+	if diff := pretty.Compare(want, gotRefreshAgain.Claims.CustomClaims); diff != "" {
+		t.Fatalf("refresh custom claims changed through returned alias: %s", diff)
+	}
+	if err := s.UpdateRefreshToken(ctx, refresh.ID, func(old storage.RefreshToken) (storage.RefreshToken, error) {
+		old.Claims.CustomClaims = updatedClaims.Clone()
+		return old, nil
+	}); err != nil {
+		t.Fatalf("update refresh custom claims: %v", err)
+	}
+	gotRefresh, err = s.GetRefresh(ctx, refresh.ID)
+	if err != nil {
+		t.Fatalf("get updated refresh token: %v", err)
+	}
+	if diff := pretty.Compare(updatedClaims, gotRefresh.Claims.CustomClaims); diff != "" {
+		t.Fatalf("updated refresh custom claims did not round trip: %s", diff)
+	}
+
+	emptyRequest := storage.AuthRequest{
+		ID:      storage.NewID(),
+		Expiry:  neverExpire,
+		HMACKey: []byte("hmac-key"),
+		Claims: storage.Claims{
+			UserID:   "user2",
+			Username: "user2",
+			Email:    "user2@example.com",
+		},
+	}
+	if err := s.CreateAuthRequest(ctx, emptyRequest); err != nil {
+		t.Fatalf("create auth request without custom claims: %v", err)
+	}
+	gotEmptyRequest, err := s.GetAuthRequest(ctx, emptyRequest.ID)
+	if err != nil {
+		t.Fatalf("get auth request without custom claims: %v", err)
+	}
+	if !gotEmptyRequest.Claims.CustomClaims.IsEmpty() {
+		t.Fatalf("expected empty custom claims for old-style auth request, got %v", gotEmptyRequest.Claims.CustomClaims)
+	}
+
+	for _, deleteFunc := range []func() error{
+		func() error { return s.DeleteAuthRequest(ctx, authRequest.ID) },
+		func() error { return s.DeleteAuthRequest(ctx, emptyRequest.ID) },
+		func() error { return s.DeleteAuthCode(ctx, authCode.ID) },
+		func() error { return s.DeleteRefresh(ctx, refresh.ID) },
+	} {
+		if err := deleteFunc(); err != nil {
+			t.Fatalf("delete custom claims test record: %v", err)
+		}
+	}
 }
 
 func mustLoadJWK(b string) *jose.JSONWebKey {
@@ -106,12 +278,16 @@ func testAuthRequestCRUD(t *testing.T, s storage.Storage) {
 			Email:         "jane.doe@example.com",
 			EmailVerified: true,
 			Groups:        []string{"a", "b"},
+			CustomClaims: storage.JSONClaims{
+				"employeeId": json.RawMessage(`"employee-1"`),
+				"regions":    json.RawMessage(`["EMEA","NA"]`),
+			},
 		},
 		PKCE:    codeChallenge,
 		HMACKey: []byte("hmac_key"),
 	}
 
-	identity := storage.Claims{Email: "foobar"}
+	identity := storage.Claims{Email: "foobar", CustomClaims: storage.JSONClaims{}}
 
 	if err := s.CreateAuthRequest(ctx, a1); err != nil {
 		t.Fatalf("failed creating auth request: %v", err)
@@ -201,6 +377,10 @@ func testAuthCodeCRUD(t *testing.T, s storage.Storage) {
 			Email:         "jane.doe@example.com",
 			EmailVerified: true,
 			Groups:        []string{"a", "b"},
+			CustomClaims: storage.JSONClaims{
+				"employeeId": json.RawMessage(`"employee-1"`),
+				"regions":    json.RawMessage(`["EMEA","NA"]`),
+			},
 		},
 	}
 
@@ -347,6 +527,10 @@ func testRefreshTokenCRUD(t *testing.T, s storage.Storage) {
 			Email:         "jane.doe@example.com",
 			EmailVerified: true,
 			Groups:        []string{"a", "b"},
+			CustomClaims: storage.JSONClaims{
+				"employeeId": json.RawMessage(`"employee-1"`),
+				"regions":    json.RawMessage(`["EMEA","NA"]`),
+			},
 		},
 		ConnectorData: []byte(`{"some":"data"}`),
 	}

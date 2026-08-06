@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,10 +13,107 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dexidp/dex/pkg/claims"
+	"github.com/dexidp/dex/server/enrichment"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/memory"
 )
+
+func TestNewIDTokenEmitsOnlyGrantedCustomClaimScopes(t *testing.T) {
+	registry, err := enrichment.NewRegistry(t.Context(), enrichment.Config{
+		Version: 1,
+		Connectors: map[string]enrichment.ConnectorConfig{
+			"mock": {
+				Provider: "mock-provider",
+				Claims: map[string]enrichment.ClaimPolicy{
+					"employeeId": {Source: "identity.email", Type: "string", Emit: []string{"profile"}},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	httpServer, server := newTestServer(t, func(config *Config) {
+		config.IdentityEnricher = registry
+	})
+	defer httpServer.Close()
+
+	storedClaims := storage.Claims{
+		UserID:       "user-1",
+		CustomClaims: claims.JSONClaims{"employeeId": claims.String("employee-123")},
+	}
+	profileToken, _, err := server.newIDToken(t.Context(), "client", storedClaims, []string{"openid", "profile"}, "", "", "", "mock")
+	require.NoError(t, err)
+
+	parsed, err := jose.ParseSigned(profileToken, []jose.SignatureAlgorithm{jose.RS256})
+	require.NoError(t, err)
+	verifiedPayload, err := parsed.Verify(testKey.Public())
+	require.NoError(t, err)
+	var payload map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(verifiedPayload, &payload))
+	require.Equal(t, claims.String("employee-123"), payload["employeeId"])
+
+	withoutProfile, _, err := server.newIDToken(t.Context(), "client", storedClaims, []string{"openid"}, "", "", "", "mock")
+	require.NoError(t, err)
+	parsed, err = jose.ParseSigned(withoutProfile, []jose.SignatureAlgorithm{jose.RS256})
+	require.NoError(t, err)
+	verifiedPayload, err = parsed.Verify(testKey.Public())
+	require.NoError(t, err)
+	payload = nil
+	require.NoError(t, json.Unmarshal(verifiedPayload, &payload))
+	_, exists := payload["employeeId"]
+	require.False(t, exists)
+}
+
+func TestAccessTokenScopeFilteringReachesUserInfo(t *testing.T) {
+	registry, err := enrichment.NewRegistry(t.Context(), enrichment.Config{
+		Version: 1,
+		Connectors: map[string]enrichment.ConnectorConfig{
+			"mock": {
+				Provider: "mock-provider",
+				Claims: map[string]enrichment.ClaimPolicy{
+					"employeeId": {Source: "identity.email", Type: "string", Emit: []string{"profile"}},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	httpServer, server := newTestServer(t, func(config *Config) {
+		config.IdentityEnricher = registry
+	})
+	defer httpServer.Close()
+
+	storedClaims := storage.Claims{
+		UserID:       "user-1",
+		Email:        "user@example.com",
+		CustomClaims: claims.JSONClaims{"employeeId": claims.String("employee-123")},
+	}
+	for _, test := range []struct {
+		name       string
+		scopes     []string
+		emitsClaim bool
+	}{
+		{name: "profile", scopes: []string{"openid", "profile"}, emitsClaim: true},
+		{name: "without profile", scopes: []string{"openid"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			accessToken, _, err := server.newAccessToken(t.Context(), "client", storedClaims, test.scopes, "", "mock")
+			require.NoError(t, err)
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, httpServer.URL+"/userinfo", nil)
+			request.Header.Set("Authorization", "Bearer "+accessToken)
+			server.handleUserInfo(recorder, request)
+			require.Equal(t, http.StatusOK, recorder.Code)
+
+			var userInfo map[string]json.RawMessage
+			require.NoError(t, json.NewDecoder(recorder.Body).Decode(&userInfo))
+			_, hasClaim := userInfo["employeeId"]
+			require.Equal(t, test.emitsClaim, hasClaim)
+		})
+	}
+}
 
 func TestGetClientID(t *testing.T) {
 	cid, err := getClientID(audience{}, "")

@@ -3,9 +3,16 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/dexidp/dex/pkg/claims"
 )
+
+// JSONClaims is the JSON-preserving representation used for approved custom
+// claims and transient upstream source claims.
+type JSONClaims = claims.JSONClaims
 
 // UserNotInRequiredGroupsError is returned by a connector when a user
 // successfully authenticates but is not a member of any of the required groups.
@@ -44,11 +51,72 @@ type Identity struct {
 
 	Groups []string
 
+	// CustomClaims contains claims approved for downstream OIDC emission.
+	CustomClaims JSONClaims
+
+	// SourceClaims contains selected upstream claims available only to the
+	// enrichment stage. It must never be persisted or emitted directly.
+	SourceClaims JSONClaims
+
+	// AuthorizedScopes contains scopes verified for a token-exchange subject.
+	// A nil slice means that the connector could not establish the subject
+	// token's scopes. It is transient and must never be persisted or emitted
+	// directly.
+	AuthorizedScopes []string
+
 	// ConnectorData holds data used by the connector for subsequent requests after initial
 	// authentication, such as access tokens for upstream provides.
 	//
 	// This data is never shared with end users, OAuth clients, or through the API.
 	ConnectorData []byte
+}
+
+// Clone returns an independent identity copy, including all mutable claim and
+// slice fields. SourceClaims remains transient on the returned identity.
+func (i Identity) Clone() Identity {
+	i.Groups = append([]string(nil), i.Groups...)
+	i.CustomClaims = i.CustomClaims.Clone()
+	i.SourceClaims = i.SourceClaims.Clone()
+	if i.AuthorizedScopes != nil {
+		i.AuthorizedScopes = append([]string{}, i.AuthorizedScopes...)
+	}
+	i.ConnectorData = append([]byte(nil), i.ConnectorData...)
+	return i
+}
+
+// ClearSourceClaims removes transient upstream claims before persistence.
+func (i *Identity) ClearSourceClaims() {
+	i.SourceClaims = nil
+}
+
+// SetSourceClaim adds a JSON-preserving source claim. It is intended for
+// connector code that has already verified the upstream claim.
+func (i *Identity) SetSourceClaim(name string, value json.RawMessage) {
+	if i.SourceClaims == nil {
+		i.SourceClaims = claims.New()
+	}
+	i.SourceClaims[name] = append(json.RawMessage(nil), value...)
+}
+
+// CopySourceClaims copies only selected verified upstream values into an
+// identity's transient source claims. Unsupported nested JSON values are
+// rejected before they can cross the connector boundary.
+func CopySourceClaims(identity *Identity, names []string, values map[string]interface{}) error {
+	for _, name := range names {
+		value, ok := values[name]
+		if !ok {
+			continue
+		}
+		rawValue, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("failed to encode source claim %q: %w", name, err)
+		}
+		if err := claims.ValidateScalarOrArray(rawValue, claims.DefaultMaxStringLength, claims.DefaultMaxArraySize); err != nil {
+			return fmt.Errorf("unsupported source claim %q: %w", name, err)
+		}
+		identity.SetSourceClaim(name, rawValue)
+	}
+	return nil
 }
 
 // PasswordConnector is an interface implemented by connectors which take a

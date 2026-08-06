@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -146,6 +147,18 @@ func (_u *RefreshTokenUpdate) AppendClaimsGroups(v []string) *RefreshTokenUpdate
 // ClearClaimsGroups clears the value of the "claims_groups" field.
 func (_u *RefreshTokenUpdate) ClearClaimsGroups() *RefreshTokenUpdate {
 	_u.mutation.ClearClaimsGroups()
+	return _u
+}
+
+// SetClaimsCustom sets the "claims_custom" field.
+func (_u *RefreshTokenUpdate) SetClaimsCustom(v map[string]json.RawMessage) *RefreshTokenUpdate {
+	_u.mutation.SetClaimsCustom(v)
+	return _u
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (_u *RefreshTokenUpdate) ClearClaimsCustom() *RefreshTokenUpdate {
+	_u.mutation.ClearClaimsCustom()
 	return _u
 }
 
@@ -364,6 +377,12 @@ func (_u *RefreshTokenUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.ClaimsGroupsCleared() {
 		_spec.ClearField(refreshtoken.FieldClaimsGroups, field.TypeJSON)
 	}
+	if value, ok := _u.mutation.ClaimsCustom(); ok {
+		_spec.SetField(refreshtoken.FieldClaimsCustom, field.TypeJSON, value)
+	}
+	if _u.mutation.ClaimsCustomCleared() {
+		_spec.ClearField(refreshtoken.FieldClaimsCustom, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.ClaimsPreferredUsername(); ok {
 		_spec.SetField(refreshtoken.FieldClaimsPreferredUsername, field.TypeString, value)
 	}
@@ -525,6 +544,18 @@ func (_u *RefreshTokenUpdateOne) AppendClaimsGroups(v []string) *RefreshTokenUpd
 // ClearClaimsGroups clears the value of the "claims_groups" field.
 func (_u *RefreshTokenUpdateOne) ClearClaimsGroups() *RefreshTokenUpdateOne {
 	_u.mutation.ClearClaimsGroups()
+	return _u
+}
+
+// SetClaimsCustom sets the "claims_custom" field.
+func (_u *RefreshTokenUpdateOne) SetClaimsCustom(v map[string]json.RawMessage) *RefreshTokenUpdateOne {
+	_u.mutation.SetClaimsCustom(v)
+	return _u
+}
+
+// ClearClaimsCustom clears the value of the "claims_custom" field.
+func (_u *RefreshTokenUpdateOne) ClearClaimsCustom() *RefreshTokenUpdateOne {
+	_u.mutation.ClearClaimsCustom()
 	return _u
 }
 
@@ -772,6 +803,12 @@ func (_u *RefreshTokenUpdateOne) sqlSave(ctx context.Context) (_node *RefreshTok
 	}
 	if _u.mutation.ClaimsGroupsCleared() {
 		_spec.ClearField(refreshtoken.FieldClaimsGroups, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ClaimsCustom(); ok {
+		_spec.SetField(refreshtoken.FieldClaimsCustom, field.TypeJSON, value)
+	}
+	if _u.mutation.ClaimsCustomCleared() {
+		_spec.ClearField(refreshtoken.FieldClaimsCustom, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ClaimsPreferredUsername(); ok {
 		_spec.SetField(refreshtoken.FieldClaimsPreferredUsername, field.TypeString, value)

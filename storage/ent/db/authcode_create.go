@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -71,6 +72,12 @@ func (_c *AuthCodeCreate) SetClaimsEmailVerified(v bool) *AuthCodeCreate {
 // SetClaimsGroups sets the "claims_groups" field.
 func (_c *AuthCodeCreate) SetClaimsGroups(v []string) *AuthCodeCreate {
 	_c.mutation.SetClaimsGroups(v)
+	return _c
+}
+
+// SetClaimsCustom sets the "claims_custom" field.
+func (_c *AuthCodeCreate) SetClaimsCustom(v map[string]json.RawMessage) *AuthCodeCreate {
+	_c.mutation.SetClaimsCustom(v)
 	return _c
 }
 
@@ -337,6 +344,10 @@ func (_c *AuthCodeCreate) createSpec() (*AuthCode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ClaimsGroups(); ok {
 		_spec.SetField(authcode.FieldClaimsGroups, field.TypeJSON, value)
 		_node.ClaimsGroups = value
+	}
+	if value, ok := _c.mutation.ClaimsCustom(); ok {
+		_spec.SetField(authcode.FieldClaimsCustom, field.TypeJSON, value)
+		_node.ClaimsCustom = value
 	}
 	if value, ok := _c.mutation.ClaimsPreferredUsername(); ok {
 		_spec.SetField(authcode.FieldClaimsPreferredUsername, field.TypeString, value)

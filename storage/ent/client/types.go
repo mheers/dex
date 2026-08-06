@@ -40,6 +40,7 @@ func toStorageAuthRequest(a *db.AuthRequest) storage.AuthRequest {
 			Email:             a.ClaimsEmail,
 			EmailVerified:     a.ClaimsEmailVerified,
 			Groups:            a.ClaimsGroups,
+			CustomClaims:      storage.JSONClaims(a.ClaimsCustom).Clone(),
 		},
 		PKCE: storage.PKCE{
 			CodeChallenge:       a.CodeChallenge,
@@ -66,6 +67,7 @@ func toStorageAuthCode(a *db.AuthCode) storage.AuthCode {
 			Email:             a.ClaimsEmail,
 			EmailVerified:     a.ClaimsEmailVerified,
 			Groups:            a.ClaimsGroups,
+			CustomClaims:      storage.JSONClaims(a.ClaimsCustom).Clone(),
 		},
 		PKCE: storage.PKCE{
 			CodeChallenge:       a.CodeChallenge,
@@ -133,6 +135,7 @@ func toStorageRefreshToken(r *db.RefreshToken) storage.RefreshToken {
 			Email:             r.ClaimsEmail,
 			EmailVerified:     r.ClaimsEmailVerified,
 			Groups:            r.ClaimsGroups,
+			CustomClaims:      storage.JSONClaims(r.ClaimsCustom).Clone(),
 		},
 	}
 }

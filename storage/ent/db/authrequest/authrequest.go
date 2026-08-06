@@ -37,6 +37,8 @@ const (
 	FieldClaimsEmailVerified = "claims_email_verified"
 	// FieldClaimsGroups holds the string denoting the claims_groups field in the database.
 	FieldClaimsGroups = "claims_groups"
+	// FieldClaimsCustom holds the string denoting the claims_custom field in the database.
+	FieldClaimsCustom = "claims_custom"
 	// FieldClaimsPreferredUsername holds the string denoting the claims_preferred_username field in the database.
 	FieldClaimsPreferredUsername = "claims_preferred_username"
 	// FieldConnectorID holds the string denoting the connector_id field in the database.
@@ -71,6 +73,7 @@ var Columns = []string{
 	FieldClaimsEmail,
 	FieldClaimsEmailVerified,
 	FieldClaimsGroups,
+	FieldClaimsCustom,
 	FieldClaimsPreferredUsername,
 	FieldConnectorID,
 	FieldConnectorData,

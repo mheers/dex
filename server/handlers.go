@@ -533,14 +533,11 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 // finalizeLogin associates the user's identity with the current AuthRequest, then returns
 // the approval page's path.
 func (s *Server) finalizeLogin(ctx context.Context, identity connector.Identity, authReq storage.AuthRequest, conn connector.Connector) (string, bool, error) {
-	claims := storage.Claims{
-		UserID:            identity.UserID,
-		Username:          identity.Username,
-		PreferredUsername: identity.PreferredUsername,
-		Email:             identity.Email,
-		EmailVerified:     identity.EmailVerified,
-		Groups:            identity.Groups,
+	enrichedIdentity, err := s.enrichIdentity(ctx, authReq.ConnectorID, identity)
+	if err != nil {
+		return "", false, err
 	}
+	claims := claimsFromIdentity(enrichedIdentity)
 
 	updater := func(a storage.AuthRequest) (storage.AuthRequest, error) {
 		a.LoggedIn = true
@@ -1225,16 +1222,15 @@ func (s *Server) handlePasswordGrant(w http.ResponseWriter, r *http.Request, cli
 		s.tokenErrHelper(w, errAccessDenied, "Invalid username or password", http.StatusUnauthorized)
 		return
 	}
+	identity, err = s.enrichIdentity(ctx, connID, identity)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "password grant identity enrichment failed", "connector_id", connID, "err", err)
+		s.tokenErrHelper(w, errAccessDenied, "Could not enrich user identity", http.StatusUnauthorized)
+		return
+	}
 
 	// Build the claims to send the id token
-	claims := storage.Claims{
-		UserID:            identity.UserID,
-		Username:          identity.Username,
-		PreferredUsername: identity.PreferredUsername,
-		Email:             identity.Email,
-		EmailVerified:     identity.EmailVerified,
-		Groups:            identity.Groups,
-	}
+	claims := claimsFromIdentity(identity)
 
 	accessToken, _, err := s.newAccessToken(ctx, client.ID, claims, scopes, nonce, connID)
 	if err != nil {
@@ -1400,6 +1396,18 @@ func (s *Server) handleTokenExchange(w http.ResponseWriter, r *http.Request, cli
 		s.tokenErrHelper(w, errRequestNotSupported, "Invalid subject_token_type.", http.StatusBadRequest)
 		return
 	}
+	switch requestedTokenType {
+	case tokenTypeID, tokenTypeAccess:
+	default:
+		s.tokenErrHelper(w, errRequestNotSupported, "Invalid requested_token_type.", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.validateTokenExchangeScopes(ctx, client.ID, scopes, nil); err != nil {
+		s.logger.ErrorContext(ctx, "invalid token exchange scope", "client_id", client.ID, "err", err)
+		s.tokenErrHelper(w, errInvalidScope, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	if subjectToken == "" {
 		s.tokenErrHelper(w, errInvalidRequest, "Missing subject_token", http.StatusBadRequest)
@@ -1424,15 +1432,25 @@ func (s *Server) handleTokenExchange(w http.ResponseWriter, r *http.Request, cli
 		s.tokenErrHelper(w, errAccessDenied, "", http.StatusUnauthorized)
 		return
 	}
-
-	claims := storage.Claims{
-		UserID:            identity.UserID,
-		Username:          identity.Username,
-		PreferredUsername: identity.PreferredUsername,
-		Email:             identity.Email,
-		EmailVerified:     identity.EmailVerified,
-		Groups:            identity.Groups,
+	authorizedScopes := identity.AuthorizedScopes
+	if authorizedScopes == nil && len(scopes) > 0 {
+		s.logger.ErrorContext(ctx, "subject token scope metadata unavailable", "client_id", client.ID)
+		s.tokenErrHelper(w, errInvalidScope, "subject token scope metadata unavailable", http.StatusBadRequest)
+		return
 	}
+	if err := s.validateTokenExchangeScopes(ctx, client.ID, scopes, authorizedScopes); err != nil {
+		s.logger.ErrorContext(ctx, "token exchange scope is not authorized by subject token", "client_id", client.ID, "err", err)
+		s.tokenErrHelper(w, errInvalidScope, err.Error(), http.StatusBadRequest)
+		return
+	}
+	identity, err = s.enrichIdentity(ctx, connID, identity)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "token exchange identity enrichment failed", "connector_id", connID, "err", err)
+		s.tokenErrHelper(w, errAccessDenied, "Could not enrich user identity", http.StatusUnauthorized)
+		return
+	}
+
+	claims := claimsFromIdentity(identity)
 	resp := accessTokenResponse{
 		IssuedTokenType: requestedTokenType,
 		TokenType:       "bearer",
@@ -1443,9 +1461,6 @@ func (s *Server) handleTokenExchange(w http.ResponseWriter, r *http.Request, cli
 		resp.AccessToken, expiry, err = s.newIDToken(r.Context(), client.ID, claims, scopes, "", "", "", connID)
 	case tokenTypeAccess:
 		resp.AccessToken, expiry, err = s.newAccessToken(r.Context(), client.ID, claims, scopes, "", connID)
-	default:
-		s.tokenErrHelper(w, errRequestNotSupported, "Invalid requested_token_type.", http.StatusBadRequest)
-		return
 	}
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "token exchange failed to create new token", "requested_token_type", requestedTokenType, "err", err)
@@ -1459,6 +1474,36 @@ func (s *Server) handleTokenExchange(w http.ResponseWriter, r *http.Request, cli
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) validateTokenExchangeScopes(ctx context.Context, clientID string, scopes, authorizedScopes []string) error {
+	authorized := make(map[string]struct{}, len(authorizedScopes))
+	for _, scope := range authorizedScopes {
+		authorized[scope] = struct{}{}
+	}
+	for _, scope := range scopes {
+		if authorizedScopes != nil {
+			if _, ok := authorized[scope]; !ok {
+				return fmt.Errorf("subject token does not authorize scope %q", scope)
+			}
+		}
+		switch scope {
+		case scopeOfflineAccess, scopeOpenID, scopeEmail, scopeProfile, scopeGroups, scopeFederatedID:
+			continue
+		}
+		peerID, ok := parseCrossClientScope(scope)
+		if !ok {
+			return fmt.Errorf("unrecognized scope %q", scope)
+		}
+		trusted, err := s.validateCrossClientTrust(ctx, clientID, peerID)
+		if err != nil {
+			return fmt.Errorf("failed to validate scope %q: %w", scope, err)
+		}
+		if !trusted {
+			return fmt.Errorf("client cannot request scope %q", scope)
+		}
+	}
+	return nil
 }
 
 type accessTokenResponse struct {

@@ -374,4 +374,72 @@ var migrations = []migration{
 		},
 		flavor: &flavorMySQL,
 	},
+	// Custom claims migrations must remain at the end of this list. Migration
+	// numbers are positional and existing databases depend on their history.
+	{
+		stmts: []string{
+			`
+			alter table auth_request
+				add column claims_custom bytea;`,
+			`
+			alter table auth_code
+				add column claims_custom bytea;`,
+			`
+			alter table refresh_token
+				add column claims_custom bytea;`,
+			`
+			update auth_request set claims_custom = convert_to('{}', 'UTF8') where claims_custom is null;`,
+			`
+			update auth_code set claims_custom = convert_to('{}', 'UTF8') where claims_custom is null;`,
+			`
+			update refresh_token set claims_custom = convert_to('{}', 'UTF8') where claims_custom is null;`,
+			`
+			alter table auth_request alter column claims_custom set not null;`,
+			`
+			alter table auth_code alter column claims_custom set not null;`,
+			`
+			alter table refresh_token alter column claims_custom set not null;`,
+		},
+		flavor: &flavorPostgres,
+	},
+	{
+		stmts: []string{
+			`
+			alter table auth_request add column claims_custom bytea;`,
+			`
+			alter table auth_code add column claims_custom bytea;`,
+			`
+			alter table refresh_token add column claims_custom bytea;`,
+			`
+			update auth_request set claims_custom = cast('{}' as blob);`,
+			`
+			update auth_code set claims_custom = cast('{}' as blob);`,
+			`
+			update refresh_token set claims_custom = cast('{}' as blob);`,
+		},
+		flavor: &flavorSQLite3,
+	},
+	{
+		stmts: []string{
+			`
+			alter table auth_request add column claims_custom bytea;`,
+			`
+			alter table auth_code add column claims_custom bytea;`,
+			`
+			alter table refresh_token add column claims_custom bytea;`,
+			`
+			update auth_request set claims_custom = '{}';`,
+			`
+			update auth_code set claims_custom = '{}';`,
+			`
+			update refresh_token set claims_custom = '{}';`,
+			`
+			alter table auth_request modify column claims_custom bytea not null;`,
+			`
+			alter table auth_code modify column claims_custom bytea not null;`,
+			`
+			alter table refresh_token modify column claims_custom bytea not null;`,
+		},
+		flavor: &flavorMySQL,
+	},
 }

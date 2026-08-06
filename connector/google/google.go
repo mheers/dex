@@ -37,6 +37,10 @@ type Config struct {
 
 	Scopes []string `json:"scopes"` // defaults to "profile" and "email"
 
+	// SourceClaims is an explicit allowlist of verified upstream claims made
+	// available to the server enrichment stage.
+	SourceClaims []string `json:"sourceClaims"`
+
 	// Optional list of whitelisted domains
 	// If this field is nonempty, only users from a listed domain will be allowed to log in
 	HostedDomains []string `json:"hostedDomains"`
@@ -140,6 +144,7 @@ func (c *Config) Open(id string, logger *slog.Logger) (conn connector.Connector,
 		fetchTransitiveGroupMembership: c.FetchTransitiveGroupMembership,
 		adminSrv:                       adminSrv,
 		promptType:                     promptType,
+		sourceClaims:                   append([]string(nil), c.SourceClaims...),
 	}, nil
 }
 
@@ -161,6 +166,7 @@ type googleConnector struct {
 	fetchTransitiveGroupMembership bool
 	adminSrv                       map[string]*admin.Service
 	promptType                     string
+	sourceClaims                   []string
 }
 
 func (c *googleConnector) Close() error {
@@ -246,6 +252,12 @@ func (c *googleConnector) createIdentity(ctx context.Context, identity connector
 	if err := idToken.Claims(&claims); err != nil {
 		return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
 	}
+	var sourceClaims map[string]interface{}
+	if len(c.sourceClaims) > 0 {
+		if err := idToken.Claims(&sourceClaims); err != nil {
+			return identity, fmt.Errorf("google: failed to decode source claims: %v", err)
+		}
+	}
 
 	if len(c.hostedDomains) > 0 {
 		found := false
@@ -284,6 +296,9 @@ func (c *googleConnector) createIdentity(ctx context.Context, identity connector
 		EmailVerified: claims.EmailVerified,
 		ConnectorData: []byte(token.RefreshToken),
 		Groups:        groups,
+	}
+	if err := connector.CopySourceClaims(&identity, c.sourceClaims, sourceClaims); err != nil {
+		return identity, fmt.Errorf("google: %v", err)
 	}
 	return identity, nil
 }

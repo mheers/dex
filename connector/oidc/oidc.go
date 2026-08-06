@@ -60,6 +60,10 @@ type Config struct {
 
 	Scopes []string `json:"scopes"` // defaults to "profile" and "email"
 
+	// SourceClaims is an explicit allowlist of verified upstream claims made
+	// available to the server enrichment stage.
+	SourceClaims []string `json:"sourceClaims"`
+
 	// HostedDomains was an optional list of whitelisted domains when using the OIDC connector with Google.
 	// Only users from a whitelisted domain were allowed to log in.
 	// Support for this option was removed from the OIDC connector.
@@ -375,6 +379,7 @@ func (c *Config) Open(id string, logger *slog.Logger) (conn connector.Connector,
 		groupsPrefix:              c.ClaimMutations.ModifyGroupNames.Prefix,
 		groupsSuffix:              c.ClaimMutations.ModifyGroupNames.Suffix,
 		pkceChallenge:             c.PKCEChallenge,
+		sourceClaims:              append([]string(nil), c.SourceClaims...),
 	}, nil
 }
 
@@ -408,6 +413,7 @@ type oidcConnector struct {
 	groupsPrefix              string
 	groupsSuffix              string
 	pkceChallenge             string
+	sourceClaims              []string
 }
 
 func (c *oidcConnector) Close() error {
@@ -534,6 +540,7 @@ func (c *oidcConnector) TokenIdentity(ctx context.Context, subjectTokenType, sub
 
 func (c *oidcConnector) createIdentity(ctx context.Context, identity connector.Identity, token *oauth2.Token, caller caller) (connector.Identity, error) {
 	var claims map[string]interface{}
+	var authorizedScopes []string
 
 	if rawIDToken, ok := token.Extra("id_token").(string); ok {
 		idToken, err := c.verifier.Verify(ctx, rawIDToken)
@@ -544,6 +551,7 @@ func (c *oidcConnector) createIdentity(ctx context.Context, identity connector.I
 		if err := idToken.Claims(&claims); err != nil {
 			return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
 		}
+		authorizedScopes = parseAuthorizedScopes(claims)
 	} else if caller == exchangeCaller {
 		switch token.TokenType {
 		case "urn:ietf:params:oauth:token-type:id_token":
@@ -555,6 +563,7 @@ func (c *oidcConnector) createIdentity(ctx context.Context, identity connector.I
 			if err := idToken.Claims(&claims); err != nil {
 				return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
 			}
+			authorizedScopes = parseAuthorizedScopes(claims)
 		case "urn:ietf:params:oauth:token-type:access_token":
 			if !c.getUserInfo {
 				return identity, fmt.Errorf("oidc: getUserInfo is required for access token exchange")
@@ -580,6 +589,15 @@ func (c *oidcConnector) createIdentity(ctx context.Context, identity connector.I
 		if err := userInfo.Claims(&claims); err != nil {
 			return identity, fmt.Errorf("oidc: failed to decode userinfo claims: %v", err)
 		}
+		if scopes := parseAuthorizedScopes(claims); scopes != nil {
+			authorizedScopes = scopes
+		}
+	}
+	if caller == exchangeCaller && authorizedScopes == nil {
+		// Standard OIDC ID tokens and UserInfo responses generally omit the
+		// OAuth grant scope. The connector's configured scopes are the explicit
+		// provider compatibility policy for that case.
+		authorizedScopes = uniqueScopes(c.oauth2Config.Scopes)
 	}
 
 	const subjectClaimKey = "sub"
@@ -725,7 +743,11 @@ func (c *oidcConnector) createIdentity(ctx context.Context, identity connector.I
 		Email:             email,
 		EmailVerified:     emailVerified,
 		Groups:            groups,
+		AuthorizedScopes:  authorizedScopes,
 		ConnectorData:     connData,
+	}
+	if err := connector.CopySourceClaims(&identity, c.sourceClaims, claims); err != nil {
+		return identity, fmt.Errorf("oidc: %v", err)
 	}
 
 	if c.userIDKey != "" {
@@ -737,4 +759,36 @@ func (c *oidcConnector) createIdentity(ctx context.Context, identity connector.I
 	}
 
 	return identity, nil
+}
+
+func parseAuthorizedScopes(values map[string]interface{}) []string {
+	switch value := values["scope"].(type) {
+	case string:
+		return append([]string{}, strings.Fields(value)...)
+	case []string:
+		return append([]string{}, value...)
+	case []interface{}:
+		scopes := make([]string, 0, len(value))
+		for _, item := range value {
+			if scope, ok := item.(string); ok {
+				scopes = append(scopes, scope)
+			}
+		}
+		return scopes
+	default:
+		return nil
+	}
+}
+
+func uniqueScopes(scopes []string) []string {
+	seen := make(map[string]struct{}, len(scopes))
+	result := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if _, ok := seen[scope]; ok {
+			continue
+		}
+		seen[scope] = struct{}{}
+		result = append(result, scope)
+	}
+	return result
 }

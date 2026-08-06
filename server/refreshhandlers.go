@@ -320,7 +320,8 @@ func (s *Server) updateRefreshToken(ctx context.Context, rCtx *refreshContext) (
 		PreferredUsername: rCtx.storageToken.Claims.PreferredUsername,
 		Email:             rCtx.storageToken.Claims.Email,
 		EmailVerified:     rCtx.storageToken.Claims.EmailVerified,
-		Groups:            rCtx.storageToken.Claims.Groups,
+		Groups:            append([]string(nil), rCtx.storageToken.Claims.Groups...),
+		CustomClaims:      rCtx.storageToken.Claims.CustomClaims.Clone(),
 	}
 
 	refreshTokenUpdater := func(old storage.RefreshToken) (storage.RefreshToken, error) {
@@ -371,6 +372,11 @@ func (s *Server) updateRefreshToken(ctx context.Context, rCtx *refreshContext) (
 		if rerr != nil {
 			return old, rerr
 		}
+		var enrichErr error
+		ident, enrichErr = s.enrichIdentity(ctx, rCtx.storageToken.ConnectorID, ident)
+		if enrichErr != nil {
+			return old, newInternalServerError()
+		}
 
 		// Update the claims of the refresh token.
 		//
@@ -380,6 +386,7 @@ func (s *Server) updateRefreshToken(ctx context.Context, rCtx *refreshContext) (
 		old.Claims.Email = ident.Email
 		old.Claims.EmailVerified = ident.EmailVerified
 		old.Claims.Groups = ident.Groups
+		old.Claims.CustomClaims = ident.CustomClaims.Clone()
 
 		return old, nil
 	}
@@ -426,14 +433,7 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request, clie
 		return
 	}
 
-	claims := storage.Claims{
-		UserID:            ident.UserID,
-		Username:          ident.Username,
-		PreferredUsername: ident.PreferredUsername,
-		Email:             ident.Email,
-		EmailVerified:     ident.EmailVerified,
-		Groups:            ident.Groups,
-	}
+	claims := claimsFromIdentity(ident)
 
 	accessToken, _, err := s.newAccessToken(r.Context(), client.ID, claims, rCtx.scopes, rCtx.storageToken.Nonce, rCtx.storageToken.ConnectorID)
 	if err != nil {

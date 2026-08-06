@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"github.com/dexidp/dex/pkg/claims"
 )
 
 var (
@@ -182,6 +184,20 @@ type Claims struct {
 	EmailVerified     bool
 
 	Groups []string
+
+	// CustomClaims contains approved custom claims for OIDC emission.
+	CustomClaims claims.JSONClaims
+}
+
+// JSONClaims is the JSON-preserving representation used for custom claims.
+type JSONClaims = claims.JSONClaims
+
+// Clone returns an independent claims copy suitable for storage or refresh
+// state updates.
+func (c Claims) Clone() Claims {
+	c.Groups = append([]string(nil), c.Groups...)
+	c.CustomClaims = c.CustomClaims.Clone()
+	return c
 }
 
 // PKCE is a container for the data needed to perform Proof Key for Code Exchange (RFC 7636) auth flow

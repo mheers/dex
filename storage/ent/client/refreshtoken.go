@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/dexidp/dex/storage"
 )
@@ -19,6 +20,7 @@ func (d *Database) CreateRefresh(ctx context.Context, refresh storage.RefreshTok
 		SetClaimsUsername(refresh.Claims.Username).
 		SetClaimsPreferredUsername(refresh.Claims.PreferredUsername).
 		SetClaimsGroups(refresh.Claims.Groups).
+		SetClaimsCustom(map[string]json.RawMessage(refresh.Claims.CustomClaims.Clone())).
 		SetConnectorID(refresh.ConnectorID).
 		SetConnectorData(refresh.ConnectorData).
 		SetToken(refresh.Token).
@@ -92,6 +94,7 @@ func (d *Database) UpdateRefreshToken(ctx context.Context, id string, updater fu
 		SetClaimsUsername(newtToken.Claims.Username).
 		SetClaimsPreferredUsername(newtToken.Claims.PreferredUsername).
 		SetClaimsGroups(newtToken.Claims.Groups).
+		SetClaimsCustom(map[string]json.RawMessage(newtToken.Claims.CustomClaims.Clone())).
 		SetConnectorID(newtToken.ConnectorID).
 		SetConnectorData(newtToken.ConnectorData).
 		SetToken(newtToken.Token).

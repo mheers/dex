@@ -1,0 +1,22 @@
+{
+    "version": 1,
+    "provider": "google",
+    "allowEmailLookup": false,
+    "allowedRoles": [
+        "reader",
+        "creator"
+    ],
+    "entries": {
+        "example-subject": {
+            "enabled": true,
+            "email": "example.invalid",
+            "claims": {
+                "employeeId": "employee-123",
+                "department": "engineering"
+            },
+            "roles": [
+                "reader"
+            ]
+        }
+    }
+}

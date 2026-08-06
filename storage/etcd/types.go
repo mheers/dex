@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
+	"github.com/dexidp/dex/pkg/claims"
 	"github.com/dexidp/dex/storage"
 )
 
@@ -187,12 +188,13 @@ func fromStorageRefreshToken(r storage.RefreshToken) RefreshToken {
 
 // Claims is a mirrored struct from storage with JSON struct tags.
 type Claims struct {
-	UserID            string   `json:"userID"`
-	Username          string   `json:"username"`
-	PreferredUsername string   `json:"preferredUsername"`
-	Email             string   `json:"email"`
-	EmailVerified     bool     `json:"emailVerified"`
-	Groups            []string `json:"groups,omitempty"`
+	UserID            string            `json:"userID"`
+	Username          string            `json:"username"`
+	PreferredUsername string            `json:"preferredUsername"`
+	Email             string            `json:"email"`
+	EmailVerified     bool              `json:"emailVerified"`
+	Groups            []string          `json:"groups,omitempty"`
+	CustomClaims      claims.JSONClaims `json:"customClaims,omitempty"`
 }
 
 func fromStorageClaims(i storage.Claims) Claims {
@@ -202,7 +204,8 @@ func fromStorageClaims(i storage.Claims) Claims {
 		PreferredUsername: i.PreferredUsername,
 		Email:             i.Email,
 		EmailVerified:     i.EmailVerified,
-		Groups:            i.Groups,
+		Groups:            append([]string(nil), i.Groups...),
+		CustomClaims:      i.CustomClaims.Clone(),
 	}
 }
 
@@ -213,7 +216,8 @@ func toStorageClaims(i Claims) storage.Claims {
 		PreferredUsername: i.PreferredUsername,
 		Email:             i.Email,
 		EmailVerified:     i.EmailVerified,
-		Groups:            i.Groups,
+		Groups:            append([]string(nil), i.Groups...),
+		CustomClaims:      i.CustomClaims.Clone(),
 	}
 }
 

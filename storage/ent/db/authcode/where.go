@@ -549,6 +549,16 @@ func ClaimsGroupsNotNil() predicate.AuthCode {
 	return predicate.AuthCode(sql.FieldNotNull(FieldClaimsGroups))
 }
 
+// ClaimsCustomIsNil applies the IsNil predicate on the "claims_custom" field.
+func ClaimsCustomIsNil() predicate.AuthCode {
+	return predicate.AuthCode(sql.FieldIsNull(FieldClaimsCustom))
+}
+
+// ClaimsCustomNotNil applies the NotNil predicate on the "claims_custom" field.
+func ClaimsCustomNotNil() predicate.AuthCode {
+	return predicate.AuthCode(sql.FieldNotNull(FieldClaimsCustom))
+}
+
 // ClaimsPreferredUsernameEQ applies the EQ predicate on the "claims_preferred_username" field.
 func ClaimsPreferredUsernameEQ(v string) predicate.AuthCode {
 	return predicate.AuthCode(sql.FieldEQ(FieldClaimsPreferredUsername, v))

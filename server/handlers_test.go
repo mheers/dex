@@ -17,10 +17,12 @@ import (
 	gosundheit "github.com/AppsFlyer/go-sundheit"
 	"github.com/AppsFlyer/go-sundheit/checks"
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 
+	"github.com/dexidp/dex/server/enrichment"
 	"github.com/dexidp/dex/storage"
 )
 
@@ -354,6 +356,8 @@ func TestHandlePassword(t *testing.T) {
 				c.Now = time.Now
 			})
 			defer httpServer.Close()
+			enricher := &countingEnricher{}
+			s.enricher = enricher
 
 			mockConnectorDataTestStorage(t, s.storage)
 
@@ -402,6 +406,7 @@ func TestHandlePassword(t *testing.T) {
 				} else {
 					require.Error(t, storage.ErrNotFound, err)
 				}
+				require.Equal(t, 1, enricher.calls)
 			}
 		})
 	}
@@ -602,6 +607,8 @@ func TestHandlePasswordLoginWithSkipApproval(t *testing.T) {
 				c.Now = time.Now
 			})
 			defer httpServer.Close()
+			enricher := &countingEnricher{}
+			s.enricher = enricher
 
 			sc := storage.Connector{
 				ID:              connID,
@@ -641,6 +648,7 @@ func TestHandlePasswordLoginWithSkipApproval(t *testing.T) {
 			} else {
 				require.Error(t, storage.ErrNotFound, err)
 			}
+			require.Equal(t, 1, enricher.calls)
 		})
 	}
 }
@@ -755,6 +763,8 @@ func TestHandleConnectorCallbackWithSkipApproval(t *testing.T) {
 				c.Now = time.Now
 			})
 			defer httpServer.Close()
+			enricher := &countingEnricher{}
+			s.enricher = enricher
 
 			if err := s.storage.CreateAuthRequest(ctx, tc.authReq); err != nil {
 				t.Fatalf("failed to create AuthRequest: %v", err)
@@ -779,6 +789,7 @@ func TestHandleConnectorCallbackWithSkipApproval(t *testing.T) {
 			} else {
 				require.Error(t, storage.ErrNotFound, err)
 			}
+			require.Equal(t, 1, enricher.calls)
 		})
 	}
 }
@@ -848,6 +859,15 @@ func TestHandleTokenExchange(t *testing.T) {
 			http.StatusBadRequest,
 			"",
 		},
+		{
+			"unsupported-scope",
+			"openid unsupported",
+			tokenTypeAccess,
+			tokenTypeAccess,
+			"foobar",
+			http.StatusBadRequest,
+			"",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -859,6 +879,8 @@ func TestHandleTokenExchange(t *testing.T) {
 				})
 			})
 			defer httpServer.Close()
+			enricher := &countingEnricher{}
+			s.enricher = enricher
 			vals := make(url.Values)
 			vals.Set("grant_type", grantTypeTokenExchange)
 			setNonEmpty(vals, "connector_id", "mock")
@@ -883,6 +905,68 @@ func TestHandleTokenExchange(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedTokenType, res.IssuedTokenType)
 			}
+			require.Equal(t, tc.expectedCode == http.StatusOK, enricher.calls == 1)
+		})
+	}
+}
+
+func TestHandleTokenExchangeFiltersCustomClaimsForBothTokenTypes(t *testing.T) {
+	registry, err := enrichment.NewRegistry(t.Context(), enrichment.Config{
+		Version: 1,
+		Connectors: map[string]enrichment.ConnectorConfig{
+			"mock": {
+				Provider: "mock",
+				Claims: map[string]enrichment.ClaimPolicy{
+					"employeeId": {Source: "identity.email", Type: "string", Emit: []string{"profile"}},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	httpServer, server := newTestServer(t, func(config *Config) {
+		config.IdentityEnricher = registry
+		config.Storage.CreateClient(t.Context(), storage.Client{ID: "client_1", Secret: "secret_1"})
+	})
+	defer httpServer.Close()
+
+	for _, test := range []struct {
+		name               string
+		requestedTokenType string
+		scope              string
+		emitsClaim         bool
+	}{
+		{name: "id without profile", requestedTokenType: tokenTypeID, scope: "openid"},
+		{name: "access without profile", requestedTokenType: tokenTypeAccess, scope: "openid"},
+		{name: "id with profile", requestedTokenType: tokenTypeID, scope: "openid profile", emitsClaim: true},
+		{name: "access with profile", requestedTokenType: tokenTypeAccess, scope: "openid profile", emitsClaim: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			values := url.Values{
+				"grant_type":           {grantTypeTokenExchange},
+				"connector_id":         {"mock"},
+				"scope":                {test.scope},
+				"requested_token_type": {test.requestedTokenType},
+				"subject_token_type":   {tokenTypeID},
+				"subject_token":        {"foobar"},
+				"client_id":            {"client_1"},
+				"client_secret":        {"secret_1"},
+			}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, httpServer.URL+"/token", strings.NewReader(values.Encode()))
+			request.Header.Set("content-type", "application/x-www-form-urlencoded")
+			server.handleToken(recorder, request)
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+
+			var response accessTokenResponse
+			require.NoError(t, json.NewDecoder(recorder.Result().Body).Decode(&response))
+			signed, err := jose.ParseSigned(response.AccessToken, []jose.SignatureAlgorithm{jose.RS256})
+			require.NoError(t, err)
+			payload, err := signed.Verify(testKey.Public())
+			require.NoError(t, err)
+			var tokenClaims map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(payload, &tokenClaims))
+			_, hasClaim := tokenClaims["employeeId"]
+			require.Equal(t, test.emitsClaim, hasClaim)
 		})
 	}
 }

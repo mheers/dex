@@ -541,7 +541,7 @@ func TestConfigCAData(t *testing.T) {
 }
 
 // Deprecated: Use testing framework established above.
-func runVerify(t *testing.T, ca string, resp string, shouldSucceed bool) {
+func runVerify(t *testing.T, ca string, resp string, shouldSucceed bool, validationTime ...time.Time) {
 	cert, err := loadCert(ca)
 	if err != nil {
 		t.Fatal(err)
@@ -549,6 +549,9 @@ func runVerify(t *testing.T, ca string, resp string, shouldSucceed bool) {
 	s := certStore{[]*x509.Certificate{cert}}
 
 	validator := dsig.NewDefaultValidationContext(s)
+	if len(validationTime) > 0 {
+		validator.Clock = dsig.NewFakeClockAt(validationTime[0])
+	}
 
 	data, err := os.ReadFile(resp)
 	if err != nil {
@@ -571,7 +574,7 @@ func TestVerify(t *testing.T) {
 }
 
 func TestVerifyUnsignedMessageAndSignedAssertionWithRootXmlNs(t *testing.T) {
-	runVerify(t, "testdata/oam-ca.pem", "testdata/oam-resp.xml", true)
+	runVerify(t, "testdata/oam-ca.pem", "testdata/oam-resp.xml", true, time.Date(2017, time.January, 1, 0, 0, 0, 0, time.UTC))
 }
 
 func TestVerifySignedMessageAndUnsignedAssertion(t *testing.T) {

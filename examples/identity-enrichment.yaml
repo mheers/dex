@@ -1,0 +1,37 @@
+identity:
+  enrichment:
+    version: 1
+    defaultPolicy: disabled
+    connectors:
+      google-workspace:
+        provider: google
+        resolver:
+          type: file
+          path: /etc/dex/google-enrichment.json
+        emailFallback: false
+        serverClaims:
+          upstreamProvider: [profile]
+          enrichmentStatus: [profile]
+        claims:
+          employeeId:
+            source: resolver.claims.employeeId
+            type: string
+            emit: [profile]
+            maxLength: 256
+          department:
+            source: resolver.claims.department
+            type: string
+            emit: [profile]
+            maxLength: 128
+        groups:
+          source: resolver.roles
+          allowed: [reader, creator]
+          maxCount: 8
+          deduplicate: true
+          emit: [groups]
+
+# Add this to the selected OIDC or Google connector configuration when the
+# policy consumes verified upstream claims directly:
+#
+# config:
+#   sourceClaims: [department]
