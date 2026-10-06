@@ -129,6 +129,11 @@ type Config struct {
 
 	// IdentityEnricher is an immutable registry of trusted enrichment policies.
 	IdentityEnricher *enrichment.Registry
+
+	// If enabled, the "login successful" log entry includes the full set of
+	// user claims (user ID, email verification status, and custom claims).
+	// Disabled by default because claim values may contain personal data.
+	LogClaims bool
 }
 
 // WebConfig holds the server's frontend templates and asset configuration.
@@ -206,6 +211,9 @@ type Server struct {
 	refreshTokenPolicy *RefreshTokenPolicy
 
 	logger *slog.Logger
+
+	// If enabled, log the full set of user claims on successful login.
+	logClaims bool
 
 	signer signer.Signer
 
@@ -319,6 +327,7 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		templates:              tmpls,
 		passwordConnector:      c.PasswordConnector,
 		logger:                 c.Logger,
+		logClaims:              c.LogClaims,
 		signer:                 c.Signer,
 		enricher:               c.IdentityEnricher,
 	}

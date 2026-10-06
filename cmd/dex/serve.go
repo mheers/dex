@@ -299,6 +299,9 @@ func runServe(options serveOptions) error {
 	if len(c.Web.AllowedOrigins) > 0 {
 		logger.Info("config allowed origins", "origins", c.Web.AllowedOrigins)
 	}
+	if c.Logger.LogClaims {
+		logger.Info("config logging full user claims on login")
+	}
 	if featureflags.ContinueOnConnectorFailure.Enabled() {
 		logger.Info("continue on connector failure feature flag enabled")
 	}
@@ -387,6 +390,7 @@ func runServe(options serveOptions) error {
 		Signer:                     signerInstance,
 		IDTokensValidFor:           idTokensValidFor,
 		IdentityEnricher:           identityEnricher,
+		LogClaims:                  c.Logger.LogClaims,
 	}
 
 	if c.Expiry.AuthRequests != "" {

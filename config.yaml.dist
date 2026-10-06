@@ -72,6 +72,10 @@ web:
 # logger:
 #   level: "debug"
 #   format: "text" # can also be "json"
+#   # Include the full set of user claims (user ID, email verification status,
+#   # and enriched custom claims) in the "login successful" log entry.
+#   # Disabled by default because claim values may contain personal data.
+#   logClaims: false
 
 # gRPC API configuration
 # Uncomment this block to enable the gRPC API.

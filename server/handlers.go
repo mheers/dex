@@ -554,9 +554,16 @@ func (s *Server) finalizeLogin(ctx context.Context, identity connector.Identity,
 		email += " (unverified)"
 	}
 
-	s.logger.InfoContext(ctx, "login successful",
+	logAttrs := []any{
 		"connector_id", authReq.ConnectorID, "username", claims.Username,
-		"preferred_username", claims.PreferredUsername, "email", email, "groups", claims.Groups)
+		"preferred_username", claims.PreferredUsername, "email", email, "groups", claims.Groups,
+	}
+	if s.logClaims {
+		logAttrs = append(logAttrs,
+			"user_id", claims.UserID, "email_verified", claims.EmailVerified,
+			"custom_claims", claims.CustomClaims)
+	}
+	s.logger.InfoContext(ctx, "login successful", logAttrs...)
 
 	offlineAccessRequested := false
 	for _, scope := range authReq.Scopes {

@@ -112,6 +112,10 @@ resolver does not log complete mapping entries or claim values. Enrichment
 metrics use only connector ID, outcome, and latency; outcomes are finite and
 do not include subjects, emails, roles, claim values, tokens, or codes.
 
+Setting `logger.logClaims: true` extends the `login successful` entry with the
+user ID, email verification status, and enriched custom claims. This option is
+disabled by default because claim values may contain personal data.
+
 For a refresh request outside the token reuse window, the connector and
 enricher are invoked once and the resulting claims are stored on the rotated
 refresh token. Requests inside the reuse window return the stored enrichment

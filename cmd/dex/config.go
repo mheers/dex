@@ -553,6 +553,11 @@ type Logger struct {
 
 	// Format specifies the format to be used for logging.
 	Format string `json:"format"`
+
+	// LogClaims adds the full set of user claims (user ID, email verification
+	// status, and enriched custom claims) to the "login successful" log entry.
+	// Disabled by default because claim values may contain personal data.
+	LogClaims bool `json:"logClaims"`
 }
 
 type RefreshToken struct {

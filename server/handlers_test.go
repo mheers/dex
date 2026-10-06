@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,6 +23,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 
+	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/pkg/claims"
 	"github.com/dexidp/dex/server/enrichment"
 	"github.com/dexidp/dex/storage"
 )
@@ -651,6 +654,109 @@ func TestHandlePasswordLoginWithSkipApproval(t *testing.T) {
 			require.Equal(t, 1, enricher.calls)
 		})
 	}
+}
+
+func TestLoginSuccessfulLogsClaimsWhenEnabled(t *testing.T) {
+	const (
+		connID    = "mockPw"
+		authReqID = "test"
+	)
+
+	tests := []struct {
+		name      string
+		logClaims bool
+	}{
+		{name: "claims omitted by default"},
+		{name: "full claims logged when enabled", logClaims: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+			httpServer, s := newTestServer(t, func(c *Config) {
+				c.SkipApprovalScreen = true
+				c.Now = time.Now
+				c.LogClaims = tc.logClaims
+				c.Logger = logger
+			})
+			defer httpServer.Close()
+
+			s.enricher = customClaimsEnricher{}
+
+			ctx := t.Context()
+			sc := storage.Connector{
+				ID:              connID,
+				Type:            "mockPassword",
+				Name:            "MockPassword",
+				ResourceVersion: "1",
+				Config:          []byte("{\"username\": \"foo\", \"password\": \"password\"}"),
+			}
+			if err := s.storage.CreateConnector(ctx, sc); err != nil {
+				t.Fatalf("create connector: %v", err)
+			}
+			if _, err := s.OpenConnector(sc); err != nil {
+				t.Fatalf("open connector: %v", err)
+			}
+
+			authReq := storage.AuthRequest{
+				ID:            authReqID,
+				ConnectorID:   connID,
+				RedirectURI:   "cb",
+				Expiry:        time.Now().Add(100 * time.Second),
+				ResponseTypes: []string{responseTypeCode},
+			}
+			if err := s.storage.CreateAuthRequest(ctx, authReq); err != nil {
+				t.Fatalf("failed to create AuthRequest: %v", err)
+			}
+
+			path := fmt.Sprintf("/auth/%s/login?state=%s&back=&login=foo&password=password", connID, authReqID)
+			s.handlePasswordLogin(httptest.NewRecorder(), httptest.NewRequest("POST", path, nil))
+
+			entry := requireLoginLogEntry(t, &buf)
+			require.Equal(t, connID, entry["connector_id"])
+			require.Equal(t, "Kilgore Trout", entry["username"])
+			require.Equal(t, "kilgore@kilgore.trout", entry["email"])
+
+			if tc.logClaims {
+				require.Equal(t, "0-385-28089-0", entry["user_id"])
+				require.Equal(t, true, entry["email_verified"])
+				require.Equal(t, map[string]any{"employeeId": "ABC-123"}, entry["custom_claims"])
+			} else {
+				require.NotContains(t, entry, "user_id")
+				require.NotContains(t, entry, "email_verified")
+				require.NotContains(t, entry, "custom_claims")
+			}
+		})
+	}
+}
+
+type customClaimsEnricher struct{}
+
+func (customClaimsEnricher) Enrich(_ context.Context, _ string, identity connector.Identity) (connector.Identity, error) {
+	identity.CustomClaims = claims.New()
+	identity.CustomClaims["employeeId"] = claims.String("ABC-123")
+	return identity, nil
+}
+
+func (customClaimsEnricher) ClaimsForScopes(_ string, _ claims.JSONClaims, _ []string) claims.JSONClaims {
+	return claims.New()
+}
+
+func requireLoginLogEntry(t *testing.T, buf *bytes.Buffer) map[string]any {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry["msg"] == "login successful" {
+			return entry
+		}
+	}
+	t.Fatalf("no \"login successful\" entry in logs:\n%s", buf.String())
+	return nil
 }
 
 func TestHandleConnectorCallbackWithSkipApproval(t *testing.T) {

@@ -146,6 +146,7 @@ expiry:
 logger:
   level: "debug"
   format: "json"
+  logClaims: true
 
 additionalFeatures: [
 	"ConnectorsCRUD"
@@ -246,8 +247,9 @@ additionalFeatures: [
 			DeviceRequests: "10m",
 		},
 		Logger: Logger{
-			Level:  slog.LevelDebug,
-			Format: "json",
+			Level:     slog.LevelDebug,
+			Format:    "json",
+			LogClaims: true,
 		},
 	}
 
