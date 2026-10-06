@@ -57,6 +57,20 @@ bin/example-app:
 	@mkdir -p bin/
 	@cd examples/ && go install -v -ldflags $(LD_FLAGS) $(REPO_PATH)/examples/example-app
 
+DOCKER_IMAGE     ?= mheers/dex
+DOCKER_TAG       ?= $(VERSION)
+DOCKER_PLATFORMS ?= linux/amd64,linux/arm64
+
+##@ Docker
+
+.PHONY: docker-push
+docker-push: ## Build and push a multi-arch container image to $(DOCKER_IMAGE):$(DOCKER_TAG).
+	docker buildx build \
+		--platform $(DOCKER_PLATFORMS) \
+		--build-arg VERSION=$(DOCKER_TAG) \
+		-t $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		--push .
+
 
 ##@ Generate
 
